@@ -1,0 +1,27 @@
+@ECHO OFF
+SET TESTRESULT=1
+ECHO:
+ECHO Translating ADVENT.for from Fortran to C...
+x64\Debug\fortran .\advent\ADVENT.for
+SET TESTRESULT=%ERRORLEVEL%
+IF %TESTRESULT% NEQ 0 GOTO DONE
+ECHO:
+ECHO Compiling ADVENT.c...
+REM Debug version
+cl /nologo /std:c11 /W4 /Od /ZI /Fo:target\ADVENT.obj /Fe:target\ADVENT.exe target\ADVENT.c
+REM Release version
+REM cl /std:c11 /W4 /O2 /DNDEBUG /GF /ZI /Fo:target\ADVENT.obj /Fe:target\ADVENT.exe target\ADVENT.c
+SET TESTRESULT=%ERRORLEVEL%
+IF %TESTRESULT% NEQ 0 GOTO DONE
+ECHO:
+ECHO Executing ADVENT.exe...
+cd advent
+..\target\ADVENT.exe
+SET TESTRESULT=%ERRORLEVEL%
+cd ..
+:DONE
+ECHO:
+IF %TESTRESULT% NEQ 0 ECHO Failed (exit code was %TESTRESULT%)
+IF %TESTRESULT% EQU 0 ECHO SUCCESS!
+ECHO ON
+@EXIT /B %TESTRESULT%
