@@ -1,10 +1,9 @@
-#include "aid/experimental/fortran/parser.h"
+#include "parser.h"
 
-#include "aid/experimental/fortran/machine.h"
-#include "aid/experimental/fortran/statements.h"
-#include "aid/experimental/fortran/unit.h"
-#include "aid/libs/core/filesystem.h"
-#include "aid/libs/core/text.h"
+#include "machine.h"
+#include "statements.h"
+#include "unit.h"
+#include "utility.h"
 
 #include <algorithm>
 #include <array>
@@ -24,11 +23,11 @@ program parser::parse_file(std::string_view filename) {
     auto constexpr extensions = std::array<std::string_view, 5>{
         ".f", ".for", ".f4", ".fiv", ".fortran"
     };
-    auto const source = core::resolve_filename(filename, extensions);
+    auto const source = resolve_filename(filename, extensions);
     auto in = std::ifstream(source);
     auto program = parse_stream(in);
     if (program.unit_name().empty() && source.has_stem()) {
-        auto const stem = core::ToUppercaseASCII(source.stem().string());
+        auto const stem = to_upper_ascii(source.stem().string());
         auto const name = symbol_name{stem};
         program.set_unit_name(name);
     }

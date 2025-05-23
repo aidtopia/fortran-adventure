@@ -1,7 +1,7 @@
-#include "aid/experimental/fortran/generator.h"
+#include "generator.h"
 
-#include "aid/experimental/fortran/symbols.h"
-#include "aid/libs/core/filesystem.h"
+#include "symbols.h"
+#include "utility.h"
 
 #include <algorithm>
 #include <format>
@@ -60,7 +60,7 @@ void generator::generate(
     program const &prog
 ) {
     auto constexpr extensions = std::array<std::string_view, 1>{".c"};
-    auto target = core::resolve_filename(path.native(), extensions);
+    auto target = resolve_filepath(path, extensions);
     auto out = std::ofstream(target);
     generate(out, prog);
 }

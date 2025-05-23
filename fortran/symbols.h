@@ -1,7 +1,7 @@
-#ifndef AID_EXPERIMENTAL_FORTRAN_SYMBOL_H
-#define AID_EXPERIMENTAL_FORTRAN_SYMBOL_H
+#ifndef AID_FORTRAN_SYMBOL_H
+#define AID_FORTRAN_SYMBOL_H
 
-#include "aid/experimental/fortran/machine.h"
+#include "machine.h"
 
 #include <algorithm>
 #include <array>

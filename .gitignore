@@ -1,4 +1,8 @@
+fortran/x86/
+fortran/x64/
+fortran/.vs/
 maps/*.*
 target/*.*
 vc140.*
+*.vcxproj.user
 ~$*.xlsx

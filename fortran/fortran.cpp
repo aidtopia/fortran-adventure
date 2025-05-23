@@ -1,5 +1,5 @@
-#include "aid/experimental/fortran/parser.h"
-#include "aid/experimental/fortran/generator.h"
+#include "parser.h"
+#include "generator.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -9,7 +9,11 @@
 
 int main(int argc, char const *argv[]) {
     if (argc != 2) {
-        std::print(std::cerr, "Usage: fortran <file>\n");
+        std::print(std::cerr, R"(
+Usage: fortran <file>
+
+<file>: name of a Fortran IV source file (e.g., ADVENT.FOR)
+)");
         return EXIT_FAILURE;
     }
     auto const program = aid::fortran::parser::parse_file(argv[1]);
