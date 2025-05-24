@@ -3,6 +3,8 @@ fortran/x64/
 fortran/.vs/
 maps/*.*
 target/*.*
+WOOD0350v1/
+WOOD0350v2/
 vc140.*
 *.vcxproj.user
 ~$*.xlsx

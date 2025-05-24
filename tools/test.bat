@@ -1,8 +1,10 @@
 @ECHO OFF
 SET TESTRESULT=1
 ECHO:
-ECHO Translating ADVENT.for from Fortran to C...
-x64\Debug\fortran .\advent\ADVENT.for
+SET STARTINGDIR=%CD%
+CD %~dp0\..\WOOD0350v2\
+ECHO Translating Adventure from Fortran to C...
+%~dp0\..\fortran\x64\Debug\fortran ADVENT.for
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
@@ -15,11 +17,10 @@ SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Executing ADVENT.exe...
-cd advent
-..\target\ADVENT.exe
+target\ADVENT.exe
 SET TESTRESULT=%ERRORLEVEL%
-cd ..
 :DONE
+CD /D %STARTINGDIR%
 ECHO:
 IF %TESTRESULT% NEQ 0 ECHO Failed (exit code was %TESTRESULT%)
 IF %TESTRESULT% EQU 0 ECHO SUCCESS!
