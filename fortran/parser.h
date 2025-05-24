@@ -42,8 +42,8 @@ class parser {
         // type is always parser::error_t.
         template <typename T> using expected = std::expected<T, error_t>;
 
-        static program parse_file(std::string_view filename);
-        static program parse_stream(std::istream &stream);
+        static expected<program> parse_file(std::string_view filename);
+        static expected<program> parse_stream(std::istream &stream);
 
     private:
         explicit parser(std::istream &stream) : m_in(stream) {}
@@ -127,7 +127,7 @@ class parser {
 
         enum class openkey { unknown, UNIT, ACCESS, FILE, NAME=FILE };
 
-        program parse_source_code();
+        expected<program> parse_source_code();
         expected<statement_t> parse_full_statement();
         expected<statement_number_t> parse_statement_number_field();
         expected<statement_t> parse_statement(statement_number_t number);

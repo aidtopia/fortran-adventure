@@ -1,27 +1,28 @@
 @ECHO OFF
 SETLOCAL
 SET TESTRESULT=1
-ECHO:
 SET STARTINGDIR=%CD%
-CD %~dp0\..\WOOD0350v2\
+SET SRCDIR=%1
+IF "%SRCDIR%"=="" SET SRCDIR=%~dp0\..\WOOD0350v2\
+CD %SRCDIR%
+ECHO:
 ECHO Translating Adventure from Fortran to C...
-%~dp0\..\fortran\x64\Debug\fortran ADVENT.for
+FOR %%f IN (adv*.f*) DO %~dp0..\fortran\x64\Debug\fortran %%f
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Compiling the C code...
+CD target
+SET OPTOPT="/Od"
+REM SET OPTOPT="/O2 /DNDEBUG /GF"
 REM TODO:  Add /WX to the compiler options.
-REM Debug version
-cl /nologo /std:c11 /W4 /Od /ZI /Fo:target\ /Fe:target\ /Fd:target\ target\ADV*.c
-REM Release version
-REM cl /nologo /std:c11 /W4 /O2 /DNDEBUG /GF /ZI /Fo:target\ /Fe:target\ /Fd:target\ target\ADV*.c
+cl /nologo /std:c11 /W4 %OPTOPT% /ZI ADV*.c
 SET TESTRESULT=%ERRORLEVEL%
+CD ..
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Running Adventure...
 ECHO:
-REM The exact executable name depends on the source name, so we'll find it with
-REM a directory search.
 DIR /B /S target\adv*.exe > target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE

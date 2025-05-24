@@ -19,13 +19,18 @@
 
 namespace aid::fortran {
 
-program parser::parse_file(std::string_view filename) {
+parser::expected<program> parser::parse_file(std::string_view filename) {
     auto constexpr extensions = std::array<std::string_view, 5>{
         ".f", ".for", ".f4", ".fiv", ".fortran"
     };
     auto const source = resolve_filename(filename, extensions);
     auto in = std::ifstream(source);
-    auto program = parse_stream(in);
+    if (!in) {
+        return error("could not find or open \"{}\"", filename);
+    }
+    auto parsed = parse_stream(in);
+    if (!parsed.has_value()) return error(parsed.error());
+    auto program = parsed.value();
     if (program.unit_name().empty() && source.has_stem()) {
         auto const stem = to_upper_ascii(source.stem().string());
         auto const name = symbol_name{stem};
@@ -34,19 +39,17 @@ program parser::parse_file(std::string_view filename) {
     return program;
 }
 
-program parser::parse_stream(std::istream &in) {
+parser::expected<program> parser::parse_stream(std::istream &in) {
     auto p = parser{in};
     return p.parse_source_code();
 }
 
-program parser::parse_source_code() {
+parser::expected<program> parser::parse_source_code() {
     while (next_statement()) {
         //std::print("{}\n", m_statement);
         auto const stmt = parse_full_statement();
         if (!stmt.has_value()) {
-            std::print(std::cerr, "ERROR: {}\n{}\n", stmt.error().message(),
-                       m_statement);
-            break;
+            return error("{}\n{}\n", stmt.error().message(), m_statement);
         }
         if (stmt.value() == nullptr) continue;
         m_current_unit->add_statement(stmt.value());

@@ -16,8 +16,12 @@ Usage: fortran <file>
 )");
         return EXIT_FAILURE;
     }
-    auto const program = aid::fortran::parser::parse_file(argv[1]);
-
+    auto const parsed = aid::fortran::parser::parse_file(argv[1]);
+    if (!parsed.has_value()) {
+        std::print(std::cerr, "{}\n", parsed.error().message());
+        exit(EXIT_FAILURE);
+    }
+    auto const program = parsed.value();
     program.print_symbol_table();
 
     auto const directory = std::filesystem::path("./target/");
