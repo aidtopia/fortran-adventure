@@ -1,10 +1,21 @@
+# Versions of Adventure source code that I'm keeping in my local tree
+# but not committing to the git repository.
+CROW0000_f4_1977-03-31/
+CROW0000_f77_1977-03-31/
+WOOD0350v1/
+WOOD0350v2/
+
+# Don't commit anything from build directories.
+*/target/
 fortran/x86/
 fortran/x64/
 fortran/.vs/
-maps/*.*
-target/*.*
-WOOD0350v1/
-WOOD0350v2/
+
+# Excel creates temporary files when you have something like
+# tools/wizard.xlsx open.
+~$*.xlsx
+
+# Miscellaneous Visual Studio and MSVC files.
 vc140.*
 *.vcxproj.user
-~$*.xlsx
+
