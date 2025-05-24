@@ -1,4 +1,5 @@
 @ECHO OFF
+SETLOCAL
 SET TESTRESULT=1
 ECHO:
 SET STARTINGDIR=%CD%
@@ -8,17 +9,26 @@ ECHO Translating Adventure from Fortran to C...
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
-ECHO Compiling ADVENT.c...
+ECHO Compiling the C code...
+REM TODO:  Add /WX to the compiler options.
 REM Debug version
-cl /nologo /std:c11 /W4 /Od /ZI /Fo:target\ADVENT.obj /Fe:target\ADVENT.exe target\ADVENT.c
+cl /nologo /std:c11 /W4 /Od /ZI /Fo:target\ /Fe:target\ /Fd:target\ target\ADV*.c
 REM Release version
-REM cl /std:c11 /W4 /O2 /DNDEBUG /GF /ZI /Fo:target\ADVENT.obj /Fe:target\ADVENT.exe target\ADVENT.c
+REM cl /nologo /std:c11 /W4 /O2 /DNDEBUG /GF /ZI /Fo:target\ /Fe:target\ /Fd:target\ target\ADV*.c
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
-ECHO Executing ADVENT.exe...
-target\ADVENT.exe
+ECHO Running Adventure...
+ECHO:
+REM The exact executable name depends on the source name, so we'll find it with
+REM a directory search.
+DIR /B /S target\adv*.exe > target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
+IF %TESTRESULT% NEQ 0 GOTO DONE
+target\run.bat
+SET TESTRESULT=%ERRORLEVEL%
+ECHO:
+ECHO Adventure completed.
 :DONE
 CD /D %STARTINGDIR%
 ECHO:
