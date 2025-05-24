@@ -198,7 +198,9 @@ std::string pause_statement::do_generate(unit const &) const {
     return std::format(
         "do {{ \n"
         "  puts(\"\\n{}\");\n"
-        "  const int ch = getchar();\n"
+        "  char buf[4] = {{0}};\n"
+        "  const char *response = fgets(buf, sizeof(buf), stdin);\n"
+        "  const int ch = response == NULL ? ' ' : response[0];\n"
         "  if (ch == 'G' || ch == 'g') break;\n"
         "  if (ch == 'X' || ch == 'x') exit(EXIT_SUCCESS);\n"
         "  puts(\"\\nPROGRAM IS PAUSED. TYPE 'G' (RETURN) TO GO OR "

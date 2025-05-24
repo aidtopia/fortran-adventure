@@ -25,7 +25,7 @@ REM a directory search.
 DIR /B /S target\adv*.exe > target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
-target\run.bat
+CALL target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
 ECHO:
 ECHO Adventure completed.

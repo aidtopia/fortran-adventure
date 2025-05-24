@@ -105,6 +105,7 @@ void generator::generate_program(program const &prog) const {
 
 void generator::generate_definitions() const {
     spew("{}", R"(
+#define __STDC_WANT_LIB_EXT1__ 1
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
@@ -220,7 +221,7 @@ void io_open(word_t unit, const char *name) {
             fclose(io.units[unit]);
             io.units[unit] = NULL;
         }
-#ifdef _MSC_VER
+#if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
         fopen_s(&io.units[unit], name, "r");
 #else
         io.units[unit] = fopen(name, "r");
