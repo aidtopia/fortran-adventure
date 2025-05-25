@@ -6,12 +6,43 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <print>
 #include <vector>
 
 void show_usage(std::ostream &out) {
     std::print(out, "Usage: fortran <file>...\n");
+}
+
+void save_symbol_table(
+    aid::fortran::program const &program,
+    std::filesystem::path const &directory
+) {
+    auto const sym_file_path =
+        (directory / program.unit_name().view()).replace_extension(".sym");
+    auto fsymtab = std::ofstream(sym_file_path);
+    if (!fsymtab) {
+        std::print(std::cerr, "could not save symbol table to \"{}\"\n",
+                   sym_file_path.string());
+        return;
+    }
+    program.print_symbol_table(fsymtab);
+}
+
+void translate_to_c(
+    aid::fortran::program const &program,
+    std::filesystem::path const &directory
+) {
+    auto const c_file_name =
+        (directory / program.unit_name().view()).replace_extension(".c");
+    auto ftranslation = std::ofstream(c_file_name);
+    if (!ftranslation) {
+        std::print(std::cerr, "could not save C translation to \"{}\"\n",
+                   c_file_name.string());
+        return;
+    }
+    aid::fortran::generator::generate(ftranslation, program);
 }
 
 int main(int argc, char const *argv[]) {
@@ -35,16 +66,15 @@ int main(int argc, char const *argv[]) {
         std::print(std::cerr, "{}\n", parsed.error().message());
         return EXIT_FAILURE;
     }
-
-    // Show the symbol table.
     auto const &program = parsed.value();
-    program.print_symbol_table(std::cout);
 
-    // Generate the C translation.
+    // Create the output directory.
     auto const directory = std::filesystem::path("./target/");
     std::filesystem::create_directory(directory);
-    auto const path = directory / program.unit_name().view();
-    aid::fortran::generator::generate(path, program);
+
+    save_symbol_table(program, directory);
+
+    translate_to_c(program, directory);
 
     return 0;
 }
