@@ -74,7 +74,7 @@ void unit::add_format(statement_number_t number, field_list_t const &fields) {
     m_formats[number] = fields;
 }
 
-void unit::print_symbol_table() const {
+void unit::print_symbol_table(std::ostream &out) const {
     auto constexpr k_bang       =  1;
     auto constexpr k_symbol     =  6;
     auto constexpr k_kind       = 10;
@@ -85,16 +85,16 @@ void unit::print_symbol_table() const {
     auto constexpr k_subtotal   =
         k_bang + k_symbol + 1 + k_kind + 1 + k_comdat + 1 + k_index + 1 +
         k_type + 1 + k_dimens + 1;
-    auto constexpr k_init_data  = 72 - k_subtotal;
+    auto constexpr k_init_data  = 78 - k_subtotal;
     auto constexpr k_total      = k_subtotal + k_init_data;
-    auto constexpr k_format     =
-        /* k_comdat + 1 + k_index + 1 + k_type + 1 + k_dimens + 1 + */ k_init_data;
+    auto constexpr k_format     = k_init_data;
 
-    std::print("{:-^{}}\n", unit_name(), k_total);
-    std::print("{:-^{}}{:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}}\n",
-               "", k_bang, "symbol", k_symbol, "kind", k_kind,
-               "comdat", k_comdat, "idx", k_index, "type", k_type,
-               "dimens", k_dimens, "initial data", k_init_data);
+    std::print(out, "{:-^{}}\n", unit_name(), k_total);
+    std::print(out,
+        "{:-^{}}{:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}}\n",
+        "", k_bang, "symbol", k_symbol, "kind", k_kind, "comdat", k_comdat,
+        "idx", k_index, "type", k_type, "dimens", k_dimens, "initial data",
+        k_init_data);
     auto if_any = [] (symbol_info const &) { return true; };
     auto sort_order =
         [] (symbol_info const &a, symbol_info const &b) {
@@ -109,7 +109,7 @@ void unit::print_symbol_table() const {
             s.kind != symbolkind::common ? "" :
             s.comdat.empty() ? "//" : std::format("{}", s.comdat);
         auto const idx = s.index > 0 ? std::format("{}", s.index) : "";
-        std::print("{:{}}{:<{}} {:<{}} {:<{}} {:>{}} {:<{}} ",
+        std::print(out, "{:{}}{:<{}} {:<{}} {:<{}} {:>{}} {:<{}} ",
                    s.referenced ? "" : "!", k_bang,
                    s.name, k_symbol, s.kind, k_kind, comdat, k_comdat,
                    idx, k_index, s.type, k_type);
@@ -123,7 +123,7 @@ void unit::print_symbol_table() const {
             }
             dimensions.push_back(')');
         }
-        std::print("{:<{}} ", dimensions, k_dimens);
+        std::print(out, "{:<{}} ", dimensions, k_dimens);
 
         if (!s.init_data.empty()) {
             auto data = std::string{};
@@ -137,18 +137,19 @@ void unit::print_symbol_table() const {
                 }
                 data += word;
             }
-            std::print("{}", data);
+            std::print(out, "{}", data);
         }
-        std::print("\n");
+        std::print(out, "\n");
     }
     for (auto const &[number, fields] : m_formats) {
-        std::print("{:{}}{:>{}} {:{}} {:{}} {:{}} {:{}} {:{}} ",
+        std::print(out, "{:{}}{:>{}} {:{}} {:{}} {:{}} {:{}} {:{}} ",
                    "", k_bang, number, k_symbol, "FORMAT", k_kind,
                    "", k_comdat, "", k_index, "", k_type, "", k_dimens);
         if (fields.size() > k_format) {
-            std::print("{}...\n", std::string_view(fields.data(), k_format-3));
+            std::print(out, "{}...\n",
+                       std::string_view(fields.data(), k_format-3));
         } else {
-            std::print("{}\n", fields);
+            std::print(out, "{}\n", fields);
         }
     }
 }

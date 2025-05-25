@@ -8,13 +8,12 @@ void program::add_subprogram(unit &&subprogram) {
     m_subprograms.push_back(std::move(subprogram));
 }
 
-void program::print_symbol_table() const {
-    unit::print_symbol_table();
+void program::print_symbol_table(std::ostream &out) const {
+    unit::print_symbol_table(out);
     for (auto const &sub : m_subprograms) {
-        sub.print_symbol_table();
+        sub.print_symbol_table(out);
     }
 }
-
 
 std::vector<unit const *> program::extract_subprograms() const {
     auto subprograms = std::vector<unit const *>{};

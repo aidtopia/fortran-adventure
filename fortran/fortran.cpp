@@ -38,7 +38,7 @@ int main(int argc, char const *argv[]) {
 
     // Show the symbol table.
     auto const &program = parsed.value();
-    program.print_symbol_table();
+    program.print_symbol_table(std::cout);
 
     // Generate the C translation.
     auto const directory = std::filesystem::path("./target/");

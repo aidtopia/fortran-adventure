@@ -7,6 +7,7 @@
 #include "symbols.h"
 
 #include <array>
+#include <iostream>
 #include <map>
 #include <functional>
 #include <string>
@@ -80,7 +81,7 @@ class unit {
             m_comdats[block] = count;
         }
 
-        virtual void print_symbol_table() const;
+        virtual void print_symbol_table(std::ostream &out) const;
 
     private:
         std::array<datatype, 26> m_implicit_type_table = {

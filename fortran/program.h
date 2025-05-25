@@ -13,7 +13,7 @@ class program : public unit {
         ~program() {}
 
         void add_subprogram(unit &&subprogram);
-        void print_symbol_table() const override;
+        void print_symbol_table(std::ostream &out) const override;
 
         std::vector<unit const *> extract_subprograms() const;
 
