@@ -166,13 +166,19 @@ void generator::generate_program(program const &prog) const {
         generate_unit(*pu);
     }
 
-    spew("\nint main() {{\n"
-         " io_init();\n"
-         " sub{}();\n"
-         " return 0;\n"
-         "}}\n", prog.unit_name());
+    spew(R"(
+int main(int argc, const char *argv[]) {{
+ io_init();
+ for (int i = 1; i < argc; ++i) {{
+  if (argv[i] == NULL || strlen(argv[i]) < 5) continue;
+  if (argv[i][0] != '-' || argv[i][1] != 'f') continue;
+  io_addmapping(&argv[i][2]);
+ }}
+ sub{}();
+ return 0;
+}}
+)", prog.unit_name());
 
-    spew("\n// End of Generated Code\n");
 }
 
 void generator::generate_definitions() const {
@@ -257,8 +263,10 @@ bool in_range(word_t index, word_t bound1, word_t bound2) {
 )");
 
     spew("{}", R"(
+#define IO_MAX_MAPPINGS 4
 #define IO_MAX_UNITS  4
 struct iocontext {
+    const char *mappings[IO_MAX_MAPPINGS];
     FILE *units[IO_MAX_UNITS+1];
     char record[132];
     char guard[sizeof(word_t)];
@@ -272,6 +280,9 @@ struct iocontext {
 } io;
 
 void io_init() {
+    for (size_t i = 0; i < sizeof(io.mappings) / sizeof(io.mappings[0]); ++i) {
+        io.mappings[i] = NULL;
+    }
     io.units[0] = stdin;
     for (size_t i = 1; i < sizeof(io.units) / sizeof(io.units[0]); ++i) {
         io.units[i] = NULL;
@@ -287,7 +298,22 @@ void io_init() {
     io.writer = NULL;
 }
 
+void io_addmapping(const char *mapping) {
+    for (size_t i = 0; i < sizeof(io.mappings) / sizeof(io.mappings[0]); ++i) {
+        if (io.mappings[i] == NULL) {
+            io.mappings[i] = mapping;
+            return;
+        }
+    }
+}
+
 void io_open(word_t unit, const char *name) {
+    for (int i = 0; i < IO_MAX_MAPPINGS; ++i) {
+        if (io.mappings[i] == NULL) continue;
+        const char *p1 = name, *p2 = io.mappings[i];
+        while (*p1 != '\0' && *p1 == *p2) { ++p1; ++p2; }
+        if (*p1 == '\0' && *p2 == '=') { name = p2 + 1; break; }
+    }
     assert(1 <= unit && unit <= IO_MAX_UNITS);
     if (1 <= unit && unit <= IO_MAX_UNITS) {
         if (io.units[unit] != NULL) {
@@ -301,11 +327,12 @@ void io_open(word_t unit, const char *name) {
 #endif
     }
     if (io.units[unit] == NULL) {
-        fprintf(stderr, "The program failed to open a file named \"%s\".\n"
-                "Consider adding a mapping to the correct file path.\n", name);
+        fprintf(stderr, "\nThe program failed to open a file named \"%s\".\n"
+                "You can restart the program with a file name mapping using "
+                "the \ncommand line option -f, like this:\n\n"
+                "    -f%s=<path>\n", name, name);
         exit(EXIT_FAILURE);
     }
-    assert(io.units[unit] != NULL);
 }
 
 void io_loadrecord(word_t unit) {
