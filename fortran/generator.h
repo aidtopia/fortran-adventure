@@ -24,6 +24,7 @@ class generator {
     private:
         void generate_program(program const &prog) const;
         void generate_definitions() const;
+        void generate_builtins(program const &prog) const;
         void generate_common_blocks(program const &prog) const;
         void generate_prototype(unit const &u) const;
         void generate_unit(unit const &u) const;

@@ -4,9 +4,11 @@
 #include "utility.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <fstream>
 #include <print>
+#include <set>
 
 namespace aid::fortran {
 
@@ -28,6 +30,9 @@ namespace {
     }
     static bool is_return_value(symbol_info const &a) {
         return a.kind == symbolkind::retval;
+    }
+    static bool is_referenced_subprogram(symbol_info const &a) {
+        return a.kind == symbolkind::subprogram && a.referenced;
     }
     static bool by_block_index(symbol_info const &a, symbol_info const &b) {
         if (a.comdat < b.comdat) return true;
@@ -53,6 +58,49 @@ namespace {
         }
         return std::format("v{}", sym.name);
     }
+
+    struct builtin_t {
+        symbol_name name;
+        std::string_view code;
+    };
+    static auto constexpr builtins = std::array<builtin_t, 2>{
+        builtin_t{symbol_name{"DATE"}, R"(
+// Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
+// HACK:  The first character of the `yy` field will not be a digit after 1999.
+// TODO:  Make this hack optional.
+void subDATE(word_t r[2]) {
+    const char  mmm[] = "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC";
+    time_t t = time(0);
+    struct tm now = *localtime(&t);
+    const int yy = now.tm_year; //now.tm_year % 100;
+    r[0] = pack_A5((now.tm_mday < 10) ? ' ' : (char)('0' + (now.tm_mday / 10)),
+                   (char)('0' + now.tm_mday % 10),
+                   '-',
+                   mmm[now.tm_mon * 3 + 0],
+                   mmm[now.tm_mon * 3 + 1]);
+    r[1] = pack_A5(mmm[now.tm_mon * 3 + 2],
+                   '-',
+                   (char)('0' + yy / 10), // produces non-digit after 1999
+                   (char)('0' + yy % 10),
+                   ' ');
+}
+)"},
+        builtin_t{symbol_name{"TIME"}, R"(
+// Returns the time as text, in the form 'hh:mm'.  Both fields are two digits,
+// with a leading '0' if necessary.  The actual library function has an optional
+// second argument to receive seconds and tenths.
+void subTIME(word_t *r) {
+    time_t t = time(0);
+    struct tm now = *localtime(&t);
+    r[0] = pack_A5((char)('0' + now.tm_hour / 10),
+                   (char)('0' + now.tm_hour % 10),
+                   ':',
+                   (char)('0' + now.tm_min / 10),
+                   (char)('0' + now.tm_min % 10));
+}
+)"}
+    };
+
 }
 
 void generator::generate(
@@ -74,6 +122,8 @@ void generator::generate_program(program const &prog) const {
     spew("// Generated Code\n");
 
     generate_definitions();
+
+    generate_builtins(prog);
 
     auto const subprograms = prog.extract_subprograms();
     if (!subprograms.empty()) {
@@ -485,50 +535,43 @@ word_t fnMOD(word_t *quotient, word_t *divisor) { return *quotient % *divisor; }
 )");
 
     spew("{}", R"(
-// Emulated subroutines from the PDP-10 system library.
-
 // Packs five ASCII characters into a word_t as PDP-10 does.
 word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
     return
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
+})"
+    );
 }
 
-// Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
-// HACK: The `yy` may use a non-digit to fool Adventure into handling years
-// from 2000 through 2050.
-void subDATE(word_t r[2]) {
-    const char  mmm[] = "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC";
-    time_t t = time(0);
-    struct tm now = *localtime(&t);
-    const int yy = now.tm_year; //now.tm_year % 100;
-    r[0] = pack_A5((now.tm_mday < 10) ? ' ' : (char)('0' + (now.tm_mday / 10)),
-                   (char)('0' + now.tm_mday % 10),
-                   '-',
-                   mmm[now.tm_mon * 3 + 0],
-                   mmm[now.tm_mon * 3 + 1]);
-    r[1] = pack_A5(mmm[now.tm_mon * 3 + 2],
-                   '-',
-                   (char)('0' + yy / 10), // produced non-digit
-                   (char)('0' + yy % 10),
-                   ' ');
-}
+void generator::generate_builtins(program const &prog) const {
+    // Include any "built-in" functions and subroutines that are referenced by
+    // any unit.
+    auto all_referenced_subs = std::set<symbol_name>{};
+    auto const subs_refed_by_main =
+        prog.extract_symbols(is_referenced_subprogram);
+    for (auto const &s : subs_refed_by_main) {
+        all_referenced_subs.insert(s.name);
+    }
+    auto const subprograms = prog.extract_subprograms();
+    for (auto const *pu : subprograms) {
+        auto const subs_refed_by_unit =
+            pu->extract_symbols(is_referenced_subprogram);
+        for (auto const &s : subs_refed_by_unit) {
+            all_referenced_subs.insert(s.name);
+        }
+    }
 
-// Returns the time as text, in the form 'hh:mm'.  Both the hours and the
-// minutes are always two digits, with a leading '0' if necessary.  The actual
-// library function has an optional second argument to receive seconds and
-// tenths, but that's not used by Adventure.
-void subTIME(word_t *r) {
-    time_t t = time(0);
-    struct tm now = *localtime(&t);
-    r[0] = pack_A5((char)('0' + now.tm_hour / 10),
-                   (char)('0' + now.tm_hour % 10),
-                   ':',
-                   (char)('0' + now.tm_min / 10),
-                   (char)('0' + now.tm_min % 10));
-}
-
-)");
+    bool any_builtins = false;
+    for (auto const &builtin : builtins) {
+        if (all_referenced_subs.contains(builtin.name)) {
+            if (!any_builtins) {
+                spew("// Emulated PDP-10 system library subroutines.\n");
+                any_builtins = true;
+            }
+            spew("{}", builtin.code);
+        }
+    }
 }
 
 void generator::generate_common_blocks(program const &prog) const {
