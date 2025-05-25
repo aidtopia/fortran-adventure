@@ -238,7 +238,8 @@ bool in_range(word_t index, word_t bound1, word_t bound2) {
     const word_t low  = (bound2 < bound1) ? bound2 : bound1;
     const word_t high = (bound1 < bound2) ? bound2 : bound1;
     return low <= index && index <= high;
-})");
+}
+)");
 
     spew("{}", R"(
 #define IO_MAX_UNITS  4
@@ -531,7 +532,8 @@ void io_output(word_t unit, word_t *pvar) {
     io.pdst = (*io.writer)(io.width, pvar, io.pdst);
     *io.pdst = '\0';
     --io.repeat;
-})");
+}
+)");
 
     spew("{}", R"(
 // Packs five ASCII characters into a word_t as PDP-10 does.
@@ -539,7 +541,8 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
     return
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
-})"
+}
+)"
     );
 }
 
