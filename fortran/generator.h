@@ -12,10 +12,6 @@ namespace aid::fortran {
 
 class generator {
     public:
-        static void generate(
-            std::filesystem::path const &path,
-            program const &prog
-        );
         static void generate(std::ostream &out, program const &prog);
 
         generator(std::ostream &out) :

@@ -103,16 +103,6 @@ void subTIME(word_t *r) {
 
 }
 
-void generator::generate(
-    std::filesystem::path const &path,
-    program const &prog
-) {
-    auto constexpr extensions = std::array<std::string_view, 1>{".c"};
-    auto target = resolve_filepath(path, extensions);
-    auto out = std::ofstream(target);
-    generate(out, prog);
-}
-
 void generator::generate(std::ostream &out, program const &source) {
     auto g = generator{out};
     g.generate_program(source);
