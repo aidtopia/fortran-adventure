@@ -63,7 +63,7 @@ namespace {
         symbol_name name;
         std::string_view code;
     };
-    static auto constexpr builtins = std::array<builtin_t, 6>{
+    static auto constexpr builtins = std::array<builtin_t, 7>{
         builtin_t{symbol_name{"IABS"},
 R"(word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
 )"},
@@ -116,6 +116,21 @@ void subTIME(word_t *r) {
                    ':',
                    (char)('0' + now.tm_min / 10),
                    (char)('0' + now.tm_min % 10));
+}
+)"},
+        builtin_t{symbol_name{"IFILE"},
+R"(
+// The oldest versions of Adventure used IFILE rather than an OPEN statement.
+// The file name is a single A5-encoded word, so the file name is limited to
+// five characters and no extension.
+void subIFILE(word_t *unit, word_t *file) {
+    char buffer[6];
+    for (int i = 0; i < 5; ++i) {
+        char ch = (char)((*file >> (1 + 7*(4-i))) & 0x7F);
+        buffer[i] = ch == ' ' ? '\0' : ch;
+    }
+    buffer[5] = '\0';
+    io_open(*unit, buffer);
 }
 )"}
     };
@@ -284,6 +299,11 @@ void io_open(word_t unit, const char *name) {
 #else
         io.units[unit] = fopen(name, "r");
 #endif
+    }
+    if (io.units[unit] == NULL) {
+        fprintf(stderr, "The program failed to open a file named \"%s\".\n"
+                "Consider adding a mapping to the correct file path.\n", name);
+        exit(EXIT_FAILURE);
     }
     assert(io.units[unit] != NULL);
 }
