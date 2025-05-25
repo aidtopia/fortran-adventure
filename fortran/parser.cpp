@@ -107,13 +107,17 @@ parser::parse_statement(statement_number_t number) {
     //     IMPLICITINTEGER(A-Z)
     //     IMPLICITINTEGER(13)=42
     //
-    // I think the solution is to first analyze the statement as a whole to
-    // determine whether it's "shaped" like an assignment statement.  If not,
-    // then the first token is a keyword.
-    auto const kw =
-        match_assignment_statement() ? keyword::assignment
-                                     : parse_keyword();
-    if (kw == keyword::unknown) return error("unknown keyword");
+    // The solution is to first analyze the statement as a whole to determine
+    // whether it's "shaped" like an assignment statement.  If not, then the
+    // first token is a keyword.
+    auto kw = match_assignment_statement() ?
+        keyword::assignment : keyword::unknown;
+    if (kw == keyword::unknown) {
+        auto const keyword = parse_keyword();
+        if (!keyword.has_value()) return error(keyword.error());
+        kw = keyword.value();
+    }
+    assert(kw != keyword::unknown);
     auto const statement = parse_identified_statement(kw, number);
     if (!statement.has_value()) return error(statement.error());
     auto const stmt = statement.value();
@@ -505,7 +509,7 @@ parser::expected<statement_t> parser::parse_format(statement_number_t number) {
 
 parser::expected<statement_t> parser::parse_implicit() {
     do {
-        auto const kw = parse_keyword();
+        auto const kw = parse_keyword().value_or(keyword::unknown);
         auto const type = kw == keyword::INTEGER ? datatype::INTEGER :
                           kw == keyword::LOGICAL ? datatype::LOGICAL
                                                  : datatype::unknown;
@@ -1290,7 +1294,7 @@ parser::expected<expression_t> parser::parse_argument() {
     return parse_expression();
 }
 
-parser::keyword parser::parse_keyword() {
+parser::expected<parser::keyword> parser::parse_keyword() {
     // Keywords may contain only letters, no digits.
     auto const begin = position();
     auto token = std::string_view(begin, position());
@@ -1301,8 +1305,7 @@ parser::keyword parser::parse_keyword() {
             return kw;
         }
     }
-    std::print(std::cerr, "expected a keyword but found '{}'", token);
-    return keyword::unknown;
+    return error("expected a keyword but found '{}'", token);
 }
 
 parser::expected<variable_list_t> parser::parse_variable_list() {
@@ -1548,7 +1551,7 @@ bool parser::end_subprogram() {
 
 bool parser::accept(keyword kw) {
     auto const bookmark = position();
-    if (parse_keyword() == kw) return true;
+    if (parse_keyword().value_or(keyword::unknown) == kw) return true;
     // whoops, back it up
     m_it = bookmark;
     return false;

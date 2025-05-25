@@ -196,7 +196,7 @@ class parser {
         expected<parameter_list_t> parse_parameter_list();
         expected<argument_list_t> parse_argument_list();
         expected<expression_t> parse_argument();
-        keyword parse_keyword();
+        expected<keyword> parse_keyword();
         expected<variable_list_t> parse_variable_list();
         symbol_name parse_identifier();
         expected<openkey> parse_open_keyword();
