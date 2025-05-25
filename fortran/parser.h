@@ -18,6 +18,7 @@
 #include <iostream>
 #include <memory>
 #include <set>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -42,7 +43,9 @@ class parser {
         // type is always parser::error_t.
         template <typename T> using expected = std::expected<T, error_t>;
 
-        static expected<program> parse_file(std::string_view filename);
+        static expected<program> parse_files(
+            std::span<std::filesystem::path> const &paths
+        );
         static expected<program> parse_stream(std::istream &stream);
 
     private:
@@ -113,8 +116,8 @@ class parser {
 
         // The types of statements allowed at a given point in the code depends
         // on the phase.  A later version of the PDP-10 Fortran IV reference
-        // says some restrictions aren't as rigid as shown here, but the
-        // Adventure code doesn't exploit that flexibility.
+        // says some restrictions aren't quite as rigid as shown here.
+        // WOOD0350v2 doesn't exploit that flexibility, but v1 does.
         enum phase_t {
         //  PHASE       STATEMENTS ALLOWED
             phase0,  // PROGRAM (possibly implied), FUNCTION, or SUBROUTINE
@@ -127,7 +130,7 @@ class parser {
 
         enum class openkey { unknown, UNIT, ACCESS, FILE, NAME=FILE };
 
-        expected<program> parse_source_code();
+        expected<program> parse_statements();
         expected<statement_t> parse_full_statement();
         expected<statement_number_t> parse_statement_number_field();
         expected<statement_t> parse_statement(statement_number_t number);

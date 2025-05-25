@@ -19,32 +19,41 @@
 
 namespace aid::fortran {
 
-parser::expected<program> parser::parse_file(std::string_view filename) {
-    auto constexpr extensions = std::array<std::string_view, 5>{
-        ".f", ".for", ".f4", ".fiv", ".fortran"
-    };
-    auto const source = resolve_filename(filename, extensions);
-    auto in = std::ifstream(source);
-    if (!in) {
-        return error("could not find or open \"{}\"", filename);
+parser::expected<program> parser::parse_files(
+    std::span<std::filesystem::path> const &paths
+) {
+    if (paths.empty()) return error("no source code provided");
+    // Concatenate the files into a single stream.
+    std::string buffer;
+    for (auto const &path : paths) {
+        auto in = std::ifstream(path);
+        if (!in) return error("count not find or open \"{}\"", path.string());
+        buffer.append(std::istreambuf_iterator<char>{in},
+                      std::istreambuf_iterator<char>{});
     }
-    auto parsed = parse_stream(in);
+    auto stream = std::stringstream{std::move(buffer)};
+    auto const parsed = parse_stream(stream);
     if (!parsed.has_value()) return error(parsed.error());
     auto program = parsed.value();
-    if (program.unit_name().empty() && source.has_stem()) {
-        auto const stem = to_upper_ascii(source.stem().string());
-        auto const name = symbol_name{stem};
-        program.set_unit_name(name);
+
+    // If the program wasn't given a name, use the first source file's name.
+    if (program.unit_name().empty()) {
+        auto const &first = paths.front();
+        if (first.has_stem()) {
+            auto const stem = to_upper_ascii(first.stem().string());
+            auto const name = symbol_name{stem};
+            program.set_unit_name(name);
+        }
     }
     return program;
 }
 
 parser::expected<program> parser::parse_stream(std::istream &in) {
     auto p = parser{in};
-    return p.parse_source_code();
+    return p.parse_statements();
 }
 
-parser::expected<program> parser::parse_source_code() {
+parser::expected<program> parser::parse_statements() {
     while (next_statement()) {
         //std::print("{}\n", m_statement);
         auto const stmt = parse_full_statement();

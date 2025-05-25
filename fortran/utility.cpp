@@ -1,6 +1,6 @@
 #include "utility.h"
 
-namespace aid::fortran {
+namespace aid {
 
 std::string escape_file_name(std::filesystem::path const &name) {
     std::string result;

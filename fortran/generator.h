@@ -3,13 +3,12 @@
 
 #include "program.h"
 #include "unit.h"
+#include "utility.h"
 
 #include <ostream>
 #include <string_view>
 
 namespace aid::fortran {
-
-std::string escape_string(std::string_view s);
 
 class generator {
     public:

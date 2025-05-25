@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace aid::fortran {
+namespace aid {
 
 std::string escape_file_name(std::filesystem::path const &name);
 std::string escape_string(std::string_view s);
