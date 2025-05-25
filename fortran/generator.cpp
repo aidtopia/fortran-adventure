@@ -63,8 +63,25 @@ namespace {
         symbol_name name;
         std::string_view code;
     };
-    static auto constexpr builtins = std::array<builtin_t, 2>{
-        builtin_t{symbol_name{"DATE"}, R"(
+    static auto constexpr builtins = std::array<builtin_t, 6>{
+        builtin_t{symbol_name{"IABS"},
+R"(word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
+)"},
+
+        builtin_t{symbol_name{"MIN0"},
+R"(word_t fnMIN0(word_t *a, word_t *b) { return (*a <= *b) ? *a : *b; }
+)"},
+
+        builtin_t{symbol_name{"MAX0"},
+R"(word_t fnMAX0(word_t *a, word_t *b) { return (*a >= *b) ? *a : *b; }
+)"},
+
+        builtin_t{symbol_name{"MOD"},
+R"(word_t fnMOD(word_t *a, word_t *b) { return *a % *b; }
+)"},
+
+        builtin_t{symbol_name{"DATE"},
+R"(
 // Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
 // HACK:  The first character of the `yy` field will not be a digit after 1999.
 // TODO:  Make this hack optional.
@@ -85,7 +102,9 @@ void subDATE(word_t r[2]) {
                    ' ');
 }
 )"},
-        builtin_t{symbol_name{"TIME"}, R"(
+
+        builtin_t{symbol_name{"TIME"},
+R"(
 // Returns the time as text, in the form 'hh:mm'.  Both fields are two digits,
 // with a leading '0' if necessary.  The actual library function has an optional
 // second argument to receive seconds and tenths.
@@ -109,8 +128,6 @@ void generator::generate(std::ostream &out, program const &source) {
 }
 
 void generator::generate_program(program const &prog) const {
-    spew("// Generated Code\n");
-
     generate_definitions();
 
     generate_builtins(prog);
@@ -515,14 +532,6 @@ void io_output(word_t unit, word_t *pvar) {
     *io.pdst = '\0';
     --io.repeat;
 })");
-
-    spew("{}", R"(
-// Elemental functions available as part of Fortran:
-word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
-word_t fnMIN0(word_t *a, word_t *b) { return (*a <= *b) ? *a : *b; }
-word_t fnMAX0(word_t *a, word_t *b) { return (*a >= *b) ? *a : *b; }
-word_t fnMOD(word_t *quotient, word_t *divisor) { return *quotient % *divisor; }
-)");
 
     spew("{}", R"(
 // Packs five ASCII characters into a word_t as PDP-10 does.
