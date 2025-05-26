@@ -2,7 +2,7 @@
 
 This project is a translator that rewrites code written in a subset of Fortran IV (from the DEC PDP-10 era) as a portable C program in order to recreate the authentic experience of [Adventure](https://en.wikipedia.org/wiki/Colossal_Cave_Adventure) as played in the late 1970s.
 
-The goal was to implement just enough of Fortran IV (and the DEC PDP-10 runtime environment) to be able to translate Adventure into standard, portable C.  Simplifications in its model of Fortran were baked in, so it's _not_ a good basis for creating a more full-featured Fortran translator.  For example, all variables are assumed to be INTEGER (or interchangeable with INTEGER).  Adding support for REAL, COMPLEX, and CHARACTER types would require some fundamental changes to the approach.
+The goal was to implement just enough of Fortran IV (and the DEC PDP-10 runtime environment) to be able to translate Adventure without making any changes to the source file(s).  Adventure uses only a fraction of the features of Fortran, which reduced much of the challenge.
 
 ## Status
 
@@ -22,9 +22,25 @@ Using [The Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html)'s
 * <sup>_f_</sup> I'm working on a plan to enable this.
 * <sup>_g_</sup> This version uses a floating point random number generator, so I'm going to have to add some support for REAL variables and constants.
 
----
+## How to Try It Out
 
-This repository does _not_ include the Adventure sources and data files.  Those are already widely available.  If you want to get your hands on the sources, I suggest starting with the aforementioned [Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html) and using its links to the [Interactive Fiction Database](https://ifdb.org/).
+1. Clone this repository.
+
+2. If you use Windows and have Visual Studio, open the solution file and build the translator.  If you use another toolchain, like clang or gcc, you'll have to cobble together a script or makefile to build all of the C++ files.  The translator uses some features from C++20 (and perhaps even newer), which probably requires specifying the C++ standard to use as a compiler option.
+
+3. Locate a copy of Adventure sources, including the Fortran source file(s) and the corresponding data file.  I suggest starting with the aforementioned [Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html) and using its links to the [Interactive Fiction Database](https://ifdb.org/).
+
+4. In the directory with the Adventure sources, run the translator (`fortran`), specifying the source file name(s) as arguments.
+
+5. The translator should have created a subdirectory called `target`, which will contain the C source file and a dump of the symbol table.  Compile the C source file using your favorite compiler.
+
+6. Make sure Adventure's data file is in the current directory, and start the program you just built.
+
+7. If the program exits with a message about being unable to open the data file, follow the instructions to run it again with a file name mapping.  (The file name hardcoded into Adventure varies by version and doesn't always match the name given in the archive.)
+
+8. You should see messages about initialization and loading the data file, followed by `INIT DONE`.  At this point, the program is paused (a Fortran feature).  Type `G` (for go) or `X` (for exit) and press return (a.k.a, enter).
+
+9. If you start Adventure during "business hours", you may be told that the cave is closed.   You can bypass this by telling the game that you're a wizard.  You will be challenged to prove it.  The wizard.xlsx Excel spreadsheet in the tools directory of this repository explains how to respond to the questions and will compute the necessary response to the final challenge.  (There will be an easier way around this soon.)
 
 ## Motivation
 
