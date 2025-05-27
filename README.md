@@ -1,6 +1,6 @@
 # An Adventure in Fortran
 
-This project is a translator that rewrites code written in a subset of Fortran IV (from the DEC PDP-10 era) as a portable C program in order to recreate the authentic experience of [Adventure](https://en.wikipedia.org/wiki/Colossal_Cave_Adventure) as played in the late 1970s.
+This project is a translator that rewrites code written in a subset of Fortran IV (from the DEC PDP-10 era) into a portable C program in order to recreate the authentic experience of [Adventure](https://en.wikipedia.org/wiki/Colossal_Cave_Adventure) as played in the late 1970s.
 
 The goal was to implement just enough of Fortran IV (and the DEC PDP-10 runtime environment) to be able to translate Adventure without making any changes to the source file(s).  Adventure uses only a fraction of the features of Fortran, which reduced much of the challenge.
 
@@ -24,23 +24,190 @@ Using [The Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html)'s
 
 ## How to Try It Out
 
-1. Clone this repository.
+I recognize this looks a bit cumbersome.  I have plans to streamline this.
 
-2. If you use Windows and have Visual Studio, open the solution file and build the translator.  If you use another toolchain, like clang or gcc, you'll have to cobble together a script or makefile to build all of the C++ files.  The translator uses some features from C++20 (and perhaps even newer), which probably requires specifying the C++ standard to use as a compiler option.
+### 1. Clone the repository
 
-3. Locate a copy of Adventure sources, including the Fortran source file(s) and the corresponding data file.  I suggest starting with the aforementioned [Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html) and using its links to the [Interactive Fiction Database](https://ifdb.org/).
+```
+git clone https://github.com/aidtopia/fortran-adventure.git
+cd fortran-adventure
+```
 
-4. In the directory with the Adventure sources, run the translator (`fortran`), specifying the source file name(s) as arguments.
+### 2. Build the translator
 
-5. The translator should have created a subdirectory called `target`, which will contain the C source file and a dump of the symbol table.  Compile the C source file using your favorite compiler.
+If you have Visual Studio installed, start a [VS Developer Command Prompt](https://learn.microsoft.com/en-us/visualstudio/ide/reference/command-prompt-powershell?view=vs-2022).  You can build the translator using the IDE...
 
-6. Make sure Adventure's data file is in the current directory, and start the program you just built.
+```
+start fortran\fortran.sln
+```
 
-7. If the program exits with a message about being unable to open the data file, follow the instructions to run it again with a file name mapping.  (The file name hardcoded into Adventure varies by version and doesn't always match the name given in the archive.)
+**or** you can use MSBUILD like this:
 
-8. You should see messages about initialization and loading the data file, followed by `INIT DONE`.  At this point, the program is paused (a Fortran feature).  Type `G` (for go) or `X` (for exit) and press return (a.k.a, enter).
+```
+msbuild fortran\fortran.sln -p:Configuration=Release
+```
 
-9. If you start Adventure during "business hours", you may be told that the cave is closed.   You can bypass this by telling the game that you're a wizard.  You will be challenged to prove it.  The wizard.xlsx Excel spreadsheet in the tools directory of this repository explains how to respond to the questions and will compute the necessary response to the final challenge.  (There will be an easier way around this soon.)
+> If you use another toolchain, like clang or gcc, you'll have to cobble together a script or makefile to compile and link all of the C++ files in the `fortran` subdirectory.  The translator uses some features from C++20 (and perhaps even newer), which probably requires specifying the C++ standard to use as a compiler option.
+
+### 3. Get the Adventure code
+
+I haven't included Adventure sources in this repository, so you'll have to download them from somewhere.  I suggest starting with the aforementioned [Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html) and using its links to the [Interactive Fiction Database](https://ifdb.org/).
+
+The example below downloads the WOOD0350v2 version, which is a good one to start with.
+
+```
+curl -so advent-original.tar.gz http://ifarchive.org/if-archive/games/source/advent-original.tar.gz
+```
+
+That file is an archive that bundles together a few files; we need to extract them:
+
+```
+tar -xf advent-original.tar.gz
+```
+
+The extracted files are placed in a subdirectory called `advent`, which contains the source and data file.  I suggest renaming the directory.
+
+```
+rename advent WOOD0350v2
+```
+
+### 4. Run the translator
+
+In the directory with the Adventure sources, run the translator (`fortran`), and the name(s) of the source file(s).
+
+```
+cd WOOD0350v2
+..\fortran\x64\Release\fortran.exe advent.for
+```
+
+### 5. Compile the translated program
+
+The translator should have created a subdirectory called `target`, which will contain the C source file and a dump of the symbol table.  Compile the C code with your favorite compiler.  The example below uses `cl`, which is the MS Visual C compiler.  The generated C code should be compliant with the C11 standard and thus very portable.  Any competent C compiler should do.
+
+```
+cd target
+cl /nologo /std:c11 /W4 /Od /ZI ADVENT.c
+```
+
+### 6. Run Adventure!
+
+Make sure Adventure's data file is in the current directory, and start the program you just built.
+
+```
+cd ..
+target\ADVENT.exe
+```
+
+### 7. Provide a data file mapping
+
+If you've followed this example, the program should begin and you can skip to step 8.
+
+If, however, you're working with a different version of Adventure, the program might say it was unable to open the data file and then exit.  The error message shows how to map the file name hardcoded into Adventure to the actual file name using a command line option.  For example, if you were using WOOD0350v**1**, you'd see:
+
+```
+INITIALISING...
+The program failed to open a file named "TEXT".
+You can restart the program with a file name mapping using the
+command line option -f, like this:
+
+    -fTEXT=<path>
+```
+
+In this case, you'd run it again like this:
+
+```
+target\ADVEN.exe -fTEXT=adven.dat
+```
+
+### 8. Go already!
+
+You should see messages about initialization and loading the data file, followed by `INIT DONE`.
+
+```
+INITIALIZING...
+TABLE SPACE USED:
+  9616 OF   9650 WORDS OF MESSAGES
+   742 OF    750 TRAVEL OPTIONS
+   296 OF    300 VOCABULARY WORDS
+   140 OF    150 LOCATIONS
+    53 OF    100 OBJECTS
+    31 OF     35 ACTION VERBS
+   201 OF    205 RTEXT MESSAGES
+    10 OF     12 CLASS MESSAGES
+     9 OF     20 HINTS
+    32 OF     35 MAGIC MESSAGES
+
+
+INIT DONE
+```
+
+At this point, the program is paused (a Fortran feature).  Type `G` (for go) or `X` (for exit) and press return (a.k.a., enter).
+
+```
+G
+```
+
+### 9. Prove you're a wizard
+
+If you start Adventure during business hours, you may be told that the cave is closed.   You can bypass this by telling the program that you're a wizard.
+
+But you'll be challenged to prove it.  The wizard.xlsx Excel spreadsheet in the `tools` directory has a synopsis of the answers you must give and it will compute the necessary response to the final challenge.  (There will be an easier way around this soon.)
+
+In the following example, the user's responses are in lowercase.
+
+```
+I'M TERRIBLY SORRY, BUT COLOSSAL CAVE IS CLOSED.  OUR HOURS ARE:
+
+         MON - FRI:   0:00 TO  8:00
+                     18:00 TO 24:00
+         SAT - SUN:  OPEN ALL DAY
+         HOLIDAYS:   OPEN ALL DAY
+
+ONLY WIZARDS ARE PERMITTED WITHIN THE CAVE RIGHT NOW.
+
+ARE YOU A WIZARD?
+
+yes
+
+PROVE IT!  SAY THE MAGIC WORD!
+
+dwarf
+
+THAT IS NOT WHAT I THOUGHT IT WAS.  DO YOU KNOW WHAT I THOUGHT IT WAS?
+
+no
+
+IFXOU
+```
+
+In the above example, the `IFXOU` is a randomly selected challenge word.  The user must apply an algorithm to the challenge word to generate the correct response word.  The spreadsheet does the work for you.
+
+![wizard spreadsheet in action](docs/wizard_challenge.png)
+
+```
+dsphm
+
+OH DEAR, YOU REALLY *ARE* A WIZARD!  SORRY TO HAVE BOTHERED YOU . . .
+```
+
+### 10. Welcome to Adventure!!
+
+Be aware that it is not yet possible to save your game state.  I'm working on that.  In the meantime, don't blame me if a dwarf knifes you.
+
+```
+WELCOME TO ADVENTURE!!  WOULD YOU LIKE INSTRUCTIONS?
+
+no
+
+YOU ARE STANDING AT THE END OF A ROAD BEFORE A SMALL BRICK BUILDING.
+AROUND YOU IS A FOREST.  A SMALL STREAM FLOWS OUT OF THE BUILDING AND
+DOWN A GULLY.
+
+enter building
+
+YOU ARE INSIDE A BUILDING, A WELL HOUSE FOR A LARGE SPRING.
+
+```
 
 ## Motivation
 
@@ -72,7 +239,7 @@ So let's [dive in](docs/peculiar.md).
 
 **Notes**
 
-1. As I've worked on this project, I've learned that some of ports have been updated, fixing at least some of the telltale bugs I'm used to spotting in the ports.  So it's possible that there may be one out there that is a faithful port.  At this point, I don't care.  I'm having fun.
+1. As I've worked on this project, I've learned that some ports have been updated, fixing at least some of the telltale bugs I'm used to spotting in the ports.  So it's possible that there may be one out there that is a faithful port.  At this point, I don't care.  I'm having fun.
 
 2. A couple weeks into this project, I came across a [project](https://github.com/swenson/adventwure/tree/main) that uses a PDP-10 Fortran IV interpreter written in Python.  Its existence was part of the impetus to switch my projects from interpreter to translator.
 
