@@ -82,20 +82,23 @@ R"(word_t fnMOD(word_t *a, word_t *b) { return *a % *b; }
 
         builtin_t{symbol_name{"DATE"},
 R"(
+// Adventure won't compute the day of the week correctly after 1999 (which
+// matters only for enforcing cave hours). Using the -y2k command line option
+// causes DATE to return a bogus year that should trick Adventure's calculation
+// into working through February 28, 2100, at which point Adventure will expect
+// a leap day.
+bool y2k_hack = false;
+
 // Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
-// HACK:  The first character of the `yy` field will not be a digit after 1999.
-// TODO:  Make this hack optional.
 void subDATE(word_t r[2]) {
-    const char  mmm[] = "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC";
-    time_t t = time(0);
-    struct tm now = *localtime(&t);
-    const int yy = now.tm_year; //now.tm_year % 100;
+    struct tm now; kron_time(&now);
+    const int yy = kron_use_y2k() ? now.tm_year : now.tm_year % 100;
     r[0] = pack_A5((now.tm_mday < 10) ? ' ' : (char)('0' + (now.tm_mday / 10)),
                    (char)('0' + now.tm_mday % 10),
                    '-',
-                   mmm[now.tm_mon * 3 + 0],
-                   mmm[now.tm_mon * 3 + 1]);
-    r[1] = pack_A5(mmm[now.tm_mon * 3 + 2],
+                   kron_mmm[now.tm_mon * 3 + 0],
+                   kron_mmm[now.tm_mon * 3 + 1]);
+    r[1] = pack_A5(kron_mmm[now.tm_mon * 3 + 2],
                    '-',
                    (char)('0' + yy / 10), // produces non-digit after 1999
                    (char)('0' + yy % 10),
@@ -109,8 +112,7 @@ R"(
 // with a leading '0' if necessary.  The actual library function has an optional
 // second argument to receive seconds and tenths.
 void subTIME(word_t *r) {
-    time_t t = time(0);
-    struct tm now = *localtime(&t);
+    struct tm now; kron_time(&now);
     r[0] = pack_A5((char)('0' + now.tm_hour / 10),
                    (char)('0' + now.tm_hour % 10),
                    ':',
@@ -166,16 +168,53 @@ void generator::generate_program(program const &prog) const {
         generate_unit(*pu);
     }
 
+    spew("{}", R"(
+void usage() {
+    printf(
+        "\nOptions:\n\n"
+        "-d<date>         Force DATE to return the specified date. Allows\n"
+        "                 many formats, but these are recommended:\n"
+        "                   yyyy-mm-dd   example:  -d1977-01-01\n"
+        "                   dd-MMM-yy    example:  -d01-JAN-77\n\n"
+        "-t<time>         Force TIME to return the specified time.\n"
+        "                   hh:mm        example:  -t13:35\n\n"
+        "-f<name>=<path>  Substitutes <path> whenever the program tries to\n"
+        "                 open a file named <name>.\n"
+        "                   example:  -fTEXT=../adven.dat\n\n"
+        "-y2k[-]          By default, DATE applies a hack to dates after 1999\n"
+        "                 in an attempt to bypass Y2K bugs. To disable this\n"
+        "                 hack, put '-' after the flag:  -y2k-\n\n"
+        "-?               Displays this option summary.\n\n");
+}
+)");
+
     spew(R"(
 int main(int argc, const char *argv[]) {{
- io_init();
- for (int i = 1; i < argc; ++i) {{
-  if (argv[i] == NULL || strlen(argv[i]) < 5) continue;
-  if (argv[i][0] != '-' || argv[i][1] != 'f') continue;
-  io_addmapping(&argv[i][2]);
- }}
- sub{}();
- return 0;
+    io_init();
+    kron_init();
+    for (int i = 1; i < argc; ++i) {{
+        const char *arg = argv[i];
+        if (arg == NULL) break;
+        if (arg[0] == '-') {{
+            if (strncmp(arg, "-y2k", 4) == 0) {{
+                kron_set_y2k(arg[4] != '-');
+                continue;
+            }} else switch (arg[1]) {{
+                case 'F': case 'f': io_addmapping(arg+2); continue;
+                case 'T': case 't': kron_override_time(arg+2); continue;
+                case 'D': case 'd': kron_override_date(arg+2); continue;
+                case 'H': case 'h':
+                case '?':           usage(); return 0;
+                default:
+                    fprintf(stderr, "ignoring unrecognized option: %s\n", arg);
+                    break;
+            }}
+        }} else {{
+            fprintf(stderr, "ignoring argument: %s\n", arg);
+        }}
+    }}
+    sub{}();
+    return 0;
 }}
 )", prog.unit_name());
 
@@ -187,6 +226,7 @@ void generator::generate_definitions() const {
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -583,14 +623,131 @@ void io_output(word_t unit, word_t *pvar) {
 )");
 
     spew("{}", R"(
+// Provides date and time, with compatibility hacks.
+struct kroncontext {
+    bool y2k_hack;
+    bool override_time;
+    bool override_date;
+    struct tm overrides;
+} kron;
+
+const char kron_mmm[] = "JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC";
+
+void kron_init() {
+    kron.y2k_hack = true;
+    kron.override_time = false;
+    kron.override_date = false;
+    memset(&kron.overrides, 0, sizeof(kron.overrides));
+}
+
+void kron_time(struct tm *ptm) {
+    const time_t t = time(0);
+#if defined(_MSC_VER)
+    const errno_t result = localtime_s(ptm, &t);
+    assert(result == 0);
+#elif defined(__STDC_LIB_EXT1__)
+    void *result = localtime_s(&t, ptm);
+    assert(result != NULL);
+#else
+    *ptm = *localtime(&t);
+#endif
+    if (kron.override_time) {
+        ptm->tm_min = kron.overrides.tm_min;
+        ptm->tm_hour = kron.overrides.tm_hour;
+    }
+    if (kron.override_date) {
+        ptm->tm_mday = kron.overrides.tm_mday;
+        ptm->tm_mon = kron.overrides.tm_mon;
+        ptm->tm_year = kron.overrides.tm_year;
+    }
+}
+
+void kron_set_y2k(bool enable) { kron.y2k_hack = enable; }
+
+bool kron_use_y2k() { return kron.y2k_hack; }
+
+void kron_override_time(const char *p) {
+    int hh = 0, mm = 0;
+    if (isdigit(*p)) { hh = *p++ - '0'; }
+    if (isdigit(*p)) { hh = 10*hh + *p++ - '0'; }
+    if (*p == ':') {
+        ++p;
+        if (isdigit(*p)) { mm = *p++ - '0'; }
+        if (isdigit(*p)) { mm = 10*mm + *p++ - '0'; }
+    }
+    if (toupper(*p) == 'P' && 0 < hh && hh < 12) { hh += 12; ++p; }
+    kron.overrides.tm_hour = hh % 24;
+    kron.overrides.tm_min  = mm % 60;
+    kron.override_time = true;
+}
+
+int kron_days_in_month(int month, int year) {
+    const int days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    assert(1 <= month && month <= 12);
+    const int leap_day = (month == 2 && (year % 4) == 0) ? 1 : 0;
+    return days[month - 1] + leap_day;
+}
+
+bool kron_valid(int year, int month, int day) {
+    if (month < 1 || 12 < month) return false;
+    if (year < 0 || 9999 < year) return false;
+    if (99 < year && year < 1970) return false;
+    const int mdays = kron_days_in_month(month, year);
+    if (day < 1 || mdays < day) return false;
+    return true;
+}
+
+void kron_override_date(const char *p) {
+    int year = 0, month = 0, day = 0;
+    int x1 = 0;
+    while (isdigit(*p) && x1 < 1000) x1 = 10*x1 + (*p++ - '0');
+    if (ispunct(*p)) ++p;
+    int x2 = 0;
+    if (isalpha(*p) && strlen(p) >= 3) {
+        char buffer[4] = {
+            (char)toupper(*p++), (char)toupper(*p++), (char)toupper(*p++), '\0'
+        };
+        const char *match = strstr(kron_mmm, buffer);
+        if (match == NULL) return;
+        const ptrdiff_t dist = match - kron_mmm;
+        if (dist < 0 && dist % 3 != 0) return;
+        month = (int)(dist/3 + 1);
+        while (isalpha(*p)) ++p;
+    } else if (isdigit(*p)) {
+        while (isdigit(*p) && x2 < 1000) x2 = 10*x2 + *p++ - '0';
+    } else {
+        return;
+    }
+    if (ispunct(*p)) ++p;
+    int x3 = 0;
+    while (isdigit(*p) && x3 < 1000) x3 = 10*x3 + *p++ - '0';
+    if (month != 0) {
+        if      (kron_valid(x3, month, x1)) { year = x3; day = x1; }
+        else if (kron_valid(x1, month, x3)) { year = x1; day = x3; }
+        else return;
+    } else {
+        if      (kron_valid(x3, x2, x1)) { year = x3; month = x2; day = x1; }
+        else if (kron_valid(x1, x2, x3)) { year = x1; month = x2; day = x3; }
+        else if (kron_valid(x3, x1, x2)) { year = x3; month = x1; day = x2; }
+        else return;
+    }
+    kron.overrides.tm_year =
+        (year < 77) ? year + 100 : (year >= 1900) ? year - 1900 : year;
+    kron.overrides.tm_mon = month - 1;
+    kron.overrides.tm_mday = day;
+    kron.override_date = true;
+}
+)");
+
+    spew("{}", R"(
 // Packs five ASCII characters into a word_t as PDP-10 does.
 word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
     return
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
 }
-)"
-    );
+)");
+
 }
 
 void generator::generate_builtins(program const &prog) const {
