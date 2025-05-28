@@ -1,6 +1,7 @@
 #ifndef AID_FORTRAN_MACHINE_H
 #define AID_FORTRAN_MACHINE_H
 
+#include <climits>
 #include <cstdint>
 #include <string>
 #include <string_view>
