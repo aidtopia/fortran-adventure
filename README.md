@@ -35,7 +35,13 @@ cd fortran-adventure
 
 ### 2. Build the translator
 
-If you have Visual Studio installed, start a [VS Developer Command Prompt](https://learn.microsoft.com/en-us/visualstudio/ide/reference/command-prompt-powershell?view=vs-2022).  You can build the translator using the IDE...
+Choose your own path: [Windows with Visual Studio](#windows-with-visual-studio) or [Another system](#another-system).
+
+#### Windows with Visual Studio
+
+Start a [VS Developer Command Prompt](https://learn.microsoft.com/en-us/visualstudio/ide/reference/command-prompt-powershell?view=vs-2022).  A Developer Command Prompt is just a regular command prompt with PATH and other environment environment variables set to access the compilers and tools that come with Visual Studio.
+
+You can build the translator using the IDE...
 
 ```
 start fortran\fortran.sln
@@ -47,11 +53,15 @@ start fortran\fortran.sln
 msbuild fortran\fortran.sln -p:Configuration=Release
 ```
 
-> If you use another toolchain, like clang or gcc, you'll have to cobble together a script or makefile to compile and link all of the C++ files in the `fortran` subdirectory.  The translator uses some features from C++20 (and perhaps even newer), which probably requires specifying the C++ standard to use as a compiler option.
+#### Another system
+
+If you use another toolchain, like clang or gcc, you'll have to cobble together a script or makefile to compile and link all of the C++ files in the `fortran` subdirectory.
+
+**NOTE:**  The translator uses some features from C++23.  For gcc and clang, make sure you're using a fairly recent version and specify `-std:c++23` among the options on the compiler command line.
 
 ### 3. Get the Adventure code
 
-I haven't included Adventure sources in this repository, so you'll have to download them from somewhere.  I suggest starting with the aforementioned [Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html) and using its links to the [Interactive Fiction Database](https://ifdb.org/).
+I haven't included Adventure sources in this repository, so you'll have to download them.  I suggest starting with the aforementioned [Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html) and using its links to the [Interactive Fiction Database](https://ifdb.org/).
 
 The example below downloads the WOOD0350v2 version, which is a good one to start with.
 
@@ -82,7 +92,9 @@ cd WOOD0350v2
 
 ### 5. Compile the translated program
 
-The translator should have created a subdirectory called `target`, which will contain the C source file and a dump of the symbol table.  Compile the C code with your favorite compiler.  The example below uses `cl`, which is the MS Visual C compiler.  The generated C code should be compliant with the C11 standard and thus very portable.  Any competent C compiler should do.
+The translator should have created a subdirectory called `target`, which will contain the C source file and a dump of the symbol table.
+
+Compile the C code with your favorite compiler.  The example below uses `cl` (which is the MS Visual C compiler includes in Visual Studio).  The generated C code should be compliant with the C11 standard and thus very portable.  Any competent C compiler should do.
 
 ```
 cd target
@@ -100,9 +112,9 @@ target\ADVENT.exe
 
 ### 7. Provide a data file mapping
 
-If you've followed this example, the program should begin and you can skip to step 8.
+If you've followed this example, the program should begin and you can skip to [step 8](#8-go-already).
 
-If, however, you're working with a different version of Adventure, the program might say it was unable to open the data file and then exit.  The error message shows how to map the file name hardcoded into Adventure to the actual file name using a command line option.  For example, if you were using WOOD0350v**1**, you'd see:
+If, however, you're working with a different version of Adventure, the program might say it was unable to open the data file and then exit.  For example, if you were using WOOD0350v**1**, you'd see:
 
 ```
 INITIALISING...
@@ -141,19 +153,15 @@ TABLE SPACE USED:
 INIT DONE
 ```
 
-At this point, the program is paused (a Fortran feature).  Type `G` (for go) or `X` (for exit) and press return (a.k.a., enter).
+At this point, the program is paused, for reasons that made sense when you were using a PDP-10 in the 1970s.  Type `G` (for go) or `X` (for exit) and press return (a.k.a., enter).
 
 ```
 G
 ```
 
-### 9. Prove you're a wizard
+### 9. Prove you're a wizard ... or not
 
-If you start Adventure during business hours, you may be told that the cave is closed.   You can bypass this by telling the program that you're a wizard.
-
-But you'll be challenged to prove it.  The wizard.xlsx Excel spreadsheet in the `tools` directory has a synopsis of the answers you must give and it will compute the necessary response to the final challenge.  (There will be an easier way around this soon.)
-
-In the following example, the user's responses are in lowercase.
+If you start Adventure during business hours, you may be told that the cave is closed.
 
 ```
 I'M TERRIBLY SORRY, BUT COLOSSAL CAVE IS CLOSED.  OUR HOURS ARE:
@@ -162,7 +170,19 @@ I'M TERRIBLY SORRY, BUT COLOSSAL CAVE IS CLOSED.  OUR HOURS ARE:
                      18:00 TO 24:00
          SAT - SUN:  OPEN ALL DAY
          HOLIDAYS:   OPEN ALL DAY
+```
 
+You can bypass this by telling Adventure that [you're a wizard](#wizard-option).  But you'll be challenged to prove it.
+
+Novice adventurers may prefer the [time travel option](#time-travel-option).
+
+#### Wizard Option
+
+The wizard.xlsx Excel spreadsheet in the `tools` directory has a synopsis of the answers you must give and it will compute the necessary response to the final challenge.
+
+In the following examples, the user's responses are in lowercase.
+
+```
 ONLY WIZARDS ARE PERMITTED WITHIN THE CAVE RIGHT NOW.
 
 ARE YOU A WIZARD?
@@ -190,6 +210,21 @@ dsphm
 OH DEAR, YOU REALLY *ARE* A WIZARD!  SORRY TO HAVE BOTHERED YOU . . .
 ```
 
+#### Time Travel Option
+
+The translator added some command line options to the program that can be used to work around compatibility problems and a Y2K bug.  These options can be used to override the date and time that Adventure sees when it asks for the system time.  I suggest setting the date to midnight, January 1, 1977, like this:
+
+```
+target\ADVENT.exe -t0:00 -d1-JAN-1977
+```
+
+There are several advantages to this approach:
+
+* The cave will be open (because it's midnight on a Sunday).
+* It avoids Y2K bugs.
+* It simplifies the wizard challenge if you choose to try out the administrator options.
+* It seeds the random number generator consistently.
+
 ### 10. Welcome to Adventure!!
 
 Be aware that it is not yet possible to save your game state.  I'm working on that.  In the meantime, don't blame me if a dwarf knifes you.
@@ -206,7 +241,6 @@ DOWN A GULLY.
 enter building
 
 YOU ARE INSIDE A BUILDING, A WELL HOUSE FOR A LARGE SPRING.
-
 ```
 
 ## Motivation
@@ -215,23 +249,23 @@ As far as I can tell, the version of Adventure I played in the late 1970s has ne
 
 Many ports have been based on extended versions (more rooms, puzzles, and treasures).  Many have modernized aspects of the experience, like replacing the ALL CAPS text with mixed case, adding a status bar, etc.  Most have made simplifying changes, like the elimination of wizard mode.
 
-I don't really mind some changes, like mixed-case text.  Then again, a status bar changes the feel of the game more than I would have expected.  And I wanted to be able to again experience the challenge of proving I'm a wizard in order to play when the cave is closed.
+I don't really mind some changes, like mixed-case text.  Then again, a status bar changes the feel of the game more than I would have expected.  And I wanted to once again experience the challenge of proving I'm a wizard in order to play when the cave is closed.
 
-Even the best ports have introduced subtle differences and sometimes even bugs.  So any visible change is&mdash;to me&mdash; a red flag that something could be wrong.
+Even the best ports have introduced subtle differences and sometimes even bugs.  So any visible change is&mdash;to me&mdash;a red flag.
 
-My particular pet peeves are omissions or bugs that break some of the methods of navigating the world.  There were various ways to navigate in portions, both above ground and below.  But all anyone remembers is that you had to use compass directions.  Part of the problem is that the other forms of travel were often broken in the ports.  Subsequent "text adventure games" and "interactive fiction", regardless of genre, solidified the compass as the one true way to navigate and that has always disappointed me.  It's difficult to demonstrate the alternatives in the game that started the category because it's one of the most common ways the ports behave differently than the original.
+My particular pet peeves are omissions or bugs that break some of the methods of navigating the world.  There were various ways to navigate in portions, both above ground and below.  But all anyone remembers is that you had to use compass directions.  Part of the problem is that the other forms of travel were often broken in the ports.  Subsequent text adventure games and works of interactive fiction, regardless of genre, solidified the compass as the one true way to navigate, and that has always disappointed me.  It's difficult to demonstrate the alternatives in the game that started the category because it's one of the most common ways the ports behave differently than the original.
 
 Why aren't there ports based on the original, canonical source?
 
-Those who have wanted to port the game have been warned away from using the early versions of the source because it makes "extensive" use of peculiar features of DEC Fortran IV on the PDP-10.  And so many ports are based on prior ports that may have already introduced changes and/or bugs.
+Those who have wanted to port the game have been warned away from using the early versions of the source because it makes "extensive" use of peculiar features of DEC Fortran IV on the PDP-10.
 
-I will not be turned away.
+I would not be turned away.
 
-I want to play the game as it was when I first played it.
+I wanted to play the game as it was when I first played it.
 
-Rather than attempt yet another port (and thus inject my own bugs), I set out to write <strike>an interpreter</strike> _a translator_ for the minimal subset of Fortran IV necessary to run the Adventure from the original unaltered source code and data file. (See Note 2.)
+So rather than attempt yet another port (and thus inject my own bugs), I set out to write <strike>an interpreter</strike> _a translator_ for the minimal subset of Fortran IV necessary to run the Adventure from the original unaltered source code and data file. (See Note 2.)
 
-And that means I have to deal with hazards of the aforementioned peculiar features.
+And that means I had to face with hazards of the aforementioned peculiar features.
 
 So let's [dive in](docs/peculiar.md).
 
@@ -239,8 +273,6 @@ So let's [dive in](docs/peculiar.md).
 
 **Notes**
 
-1. As I've worked on this project, I've learned that some ports have been updated, fixing at least some of the telltale bugs I'm used to spotting in the ports.  So it's possible that there may be one out there that is a faithful port.  At this point, I don't care.  I'm having fun.
+1. As I've worked on this project, I've learned that some ports have been updated, fixing at least some of the telltale bugs I'm used to spotting.  So it's possible that there may be one out there that is a faithful port.  At this point, I don't care.  I'm having fun.
 
 2. A couple weeks into this project, I came across a [project](https://github.com/swenson/adventwure/tree/main) that uses a PDP-10 Fortran IV interpreter written in Python.  Its existence was part of the impetus to switch my projects from interpreter to translator.
-
-
