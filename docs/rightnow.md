@@ -104,4 +104,9 @@ So, to accommodate CROW0000, the translator needs:
 
 [x] parse simple REAL constants
 [x] allow REAL type specification statements
-[ ] provide an implementation of `RAN`
+[x] provide an implementation of `RAN`
+
+To avoid breaking WOOD0350, I had to modify the code that provides the "built-in" functions to avoid providing an implementation for a subprogram that the source code implements itself.
+
+Hey, it works!
+

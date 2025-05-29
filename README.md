@@ -12,7 +12,7 @@ Using [The Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html)'s
 |:--------|:-----------|:---------|:---------|:------------|
 |[WOOD0350 Ver. 2](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES | YES<sup>_a, b_</sup>| YES | not yet<sup>_f_</sup> |
 |[WOOD0350 Ver. 1](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES<sup>_c, d_</sup> | YES<sup>_a, b_</sup> | YES<sup>_e_</sup> | not yet<sup>_f_</sup> |
-|[CROW0000_f4_1977-03-31](https://mipmip.org/advfamily/advfamily.html#CROW0000)| not yet<sup>_g_</sup> | -- | -- | -- |
+|[CROW0000_f4_1977-03-31](https://mipmip.org/advfamily/advfamily.html#CROW0000)| YES<sup>_g_</sup> | YES<sup>h</sup> | YES<sup>e, i</sup> | not yet<sup>_f_</sup> |
 
 * <sup>_a_</sup> The compiler warns about two variables that are declared but unused.  These can be ignored.  The problem is understood but not currently a high priority.
 * <sup>_b_</sup> The optimizer (which does more flow analysis) warns of a few instances of unreachable code.  Some subroutines do not return (by design), but the translator doesn't realize that.  The calls sites are bookended by code to ensure the temporary variable stack remains balanced, resulting in unreachable code.  These can be safely ignored.  The problem is understood but not currently a high priority.
@@ -20,7 +20,9 @@ Using [The Adventure Family Tree](https://mipmip.org/advfamily/advfamily.html)'s
 * <sup>_d_</sup> The tools\test.bat file does not properly handle the fact that this version is split into multiple source files, so you have to invoke the translator manually with both source files in the same command.
 * <sup>_e_</sup> The game expects its data file to be named `TEXT` (no directory path, no extension).  Launch the program with the command line option `-fTEXT=<path>` where `<path>` is the path to the actual data file.
 * <sup>_f_</sup> I'm working on a plan to enable this.
-* <sup>_g_</sup> This version uses a floating point random number generator, so I'm going to have to add some support for REAL variables and constants.
+* <sup>_g_</sup> Translator will warn about use of REAL, but it works for CROW0000.
+* <sup>_h_</sup> Compiler warns of unreachable code because CROW0000 has unreachable code that was translated.
+* <sup>_i_</sup> Commands must be ALL CAPS.
 
 ## How to Try It Out
 
