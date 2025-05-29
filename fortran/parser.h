@@ -109,6 +109,7 @@ class parser {
             PROGRAM,
             SUBROUTINE,
             READ,
+            REAL,
             RETURN,
             STOP,
             TYPE
@@ -189,7 +190,6 @@ class parser {
         expected<dimension> parse_one_dimension();
         expected<io_list_t> parse_io_list();
         expected<io_list_item> parse_io_list_item();
-        expected<expression_t> parse_indexed_array_element();
         expected<index_control_t> parse_index_control();
         expected<data_list_t> parse_data_list();
         expected<field_list_t> parse_field_list();
@@ -198,6 +198,10 @@ class parser {
         expected<expression_t> parse_argument();
         expected<keyword> parse_keyword();
         expected<variable_list_t> parse_variable_list();
+        expected<variable_list_item_t> parse_variable_list_item();
+        expected<constant_index_control_t> parse_constant_index_control();
+        expected<subscript_list_t> parse_subscript_list();
+        expected<subscript_t> parse_subscript();
         symbol_name parse_identifier();
         expected<openkey> parse_open_keyword();
         expected<operator_t> parse_operator();

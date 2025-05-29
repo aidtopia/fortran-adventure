@@ -13,6 +13,14 @@ struct index_control_t {
     expression_t step;
 };
 
+// For DATA statements, the index control must be constants.
+struct constant_index_control_t {
+    symbol_name index;
+    machine_word_t init;
+    machine_word_t final;
+    machine_word_t step;
+};
+
 }
 
 #endif

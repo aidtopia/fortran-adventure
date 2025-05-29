@@ -167,6 +167,7 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::EXTERNAL:     return parse_external();
         case keyword::INTEGER:      return parse_type_specification(datatype::INTEGER);
         case keyword::LOGICAL:      return parse_type_specification(datatype::LOGICAL);
+        case keyword::REAL:         return parse_type_specification(datatype::REAL);
         default:
             // At this transition from phase2 to phase3, we can determine the
             // types for any symbols that are still unknown.
@@ -432,25 +433,54 @@ parser::expected<statement_t> parser::parse_data() {
         // Now match up the variables with the data values.
         auto data_iter = data_list.value().begin();
         auto const data_end = data_list.value().end();
-        for (auto const &variable : variable_list.value()) {
-            auto symbol = m_current_unit->find_symbol(variable);
+        for (auto const &item : variable_list.value()) {
+            auto symbol = m_current_unit->find_symbol(item.variable);
             if (symbol.type == datatype::unknown) {
-                symbol.type = m_current_unit->implicit_type(variable);
+                symbol.type = m_current_unit->implicit_type(item.variable);
             }
             if (symbol.shape.empty()) {     // scalar
+                assert(item.subscripts.empty());
                 if (data_iter == data_end) {
                     return error("more variables than values in DATA "
                                  "statement");
                 }
                 symbol.init_data.push_back((*data_iter++).value);
             } else {                        // array
-                auto const count = array_size(symbol.shape);
-                for (std::size_t i = 0; i < count; ++i) {
+                // TODO:  Generalize for more than 1 dimension.
+                assert(item.subscripts.size() == 1);
+                auto const &control = item.index_control;
+                if (control.step == 0) {
+                    return error("induction step cannot be 0");
+                }
+                if ((control.init < control.final && control.step < 0) ||
+                    (control.init > control.final && control.step > 0)
+                ) {
+                    return error("induction step is in the wrong direction");
+                }
+                auto const lower = std::min(control.init, control.final);
+                auto const upper = std::max(control.init, control.final);
+                auto const &subscript = item.subscripts[0];
+                auto const &shape = symbol.shape;
+                auto const count = array_size(shape);
+                auto &init_data = symbol.init_data;
+                init_data.reserve(count);
+                for (machine_word_t i = control.init;
+                     lower <= i && i <= upper;
+                     i += control.step
+                ) {
                     if (data_iter == data_end) {
                         return error("more variables than values in DATA "
                                      "statement");
                     }
-                    symbol.init_data.push_back((*data_iter++).value);
+                    auto const index =
+                        subscript.coefficient*i + subscript.offset -
+                        shape[0].minimum;
+                    if (init_data.size() == static_cast<std::size_t>(index)) {
+                        init_data.push_back((*data_iter++).value);
+                    } else {
+                        init_data.resize(index + 1);
+                        init_data[index] = (*data_iter++).value;
+                    }
                 }
             }
             m_current_unit->update_symbol(symbol);
@@ -1089,7 +1119,18 @@ parser::expected<io_list_t> parser::parse_io_list() {
 
 parser::expected<io_list_item> parser::parse_io_list_item() {
     if (accept('(')) {  // should be indexed array expression and index control
-        auto const lvalue = parse_indexed_array_element();
+        auto const array = parse_identifier();
+        if (array.empty()) return error("expected array name for i/o item");
+        auto const symbol = m_current_unit->find_symbol(array);
+        if (symbol.shape.empty()) {
+            return error("expected array name, saw '{}'", array);
+        }
+        auto const subscripts = parse_argument_list();
+        if (!subscripts.has_value()) return error(subscripts.error());
+        if (subscripts.value().size() != symbol.shape.size()) {
+            return error("expected {} subscripts for '{}'",
+                         symbol.shape.size(), array);
+        }
         if (!accept(',')) {
             return error("missing ',' separating the indexed expression from "
                          "the index control");
@@ -1097,7 +1138,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         auto const control = parse_index_control();
         if (!control.has_value()) return error(control.error());
         if (!accept(')')) return error("missing ')' after index control");
-        return io_list_item{lvalue.value(), control.value()};
+        return io_list_item{array, subscripts.value(), control.value()};
     }
 
     auto const name = parse_identifier();
@@ -1115,17 +1156,11 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         return error("cannot use a subprogram in an input-output list");
     }
     
-    if (symbol.shape.empty()) {
-        auto const lvalue = std::make_shared<variable_node>(name);
-        return io_list_item{lvalue};
-    }
+    if (symbol.shape.empty()) return io_list_item{name};
     if (match('(')) {
         auto const indices = parse_argument_list();
         if (!indices.has_value()) return error(indices.error());
-        auto const lvalue =
-            std::make_shared<array_index_node>(
-                name, symbol.shape, indices.value());
-        return io_list_item{lvalue};
+        return io_list_item{name, indices.value()};
     }
 
     // Implicitly apply to the entire array.
@@ -1136,11 +1171,8 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         m_current_unit->update_symbol(induction_symbol);
     }
     auto const induction = std::make_shared<variable_node>(induction_name);
-    auto const lvalue =
-        std::make_shared<array_index_node>(
-            name, symbol.shape, argument_list_t{induction});
     return io_list_item{
-        lvalue,
+        name, argument_list_t{induction},
         {.index=induction_name,
          .init=std::make_shared<constant_node>(symbol.shape[0].minimum),
          .final=std::make_shared<constant_node>(symbol.shape[0].maximum),
@@ -1148,7 +1180,8 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
     };
 }
 
-parser::expected<expression_t> parser::parse_indexed_array_element() {
+#if 0
+parser::expected<array_with_indices> parser::parse_array_with_indices() {
     // <array_name> '(' <argument_list> ')'
     auto const array = parse_identifier();
     if (array.empty()) return error("missing array name");
@@ -1159,9 +1192,9 @@ parser::expected<expression_t> parser::parse_indexed_array_element() {
     }
     auto const index = parse_argument_list();
     if (!index.has_value()) return error(index.error());
-    return std::make_shared<array_index_node>(
-        array, symbol.shape, index.value());
+    return array_with_indices(array, index.value());
 }
+#endif
 
 parser::expected<index_control_t> parser::parse_index_control() {
     auto const index = parse_identifier();
@@ -1227,6 +1260,7 @@ parser::expected<field_list_t> parser::parse_field_list() {
     while (parens != 0) {
         if (at_eol()) return error("mismatched parentheses in FORMAT");
         switch (current()) {
+            case '\0': return error("missing ')' in FORMAT statement");
             case '\'': quoted = !quoted; break;
             case '(':  if (!quoted) parens += 1; break;
             case ')':
@@ -1235,6 +1269,10 @@ parser::expected<field_list_t> parser::parse_field_list() {
                     if (parens == 0) {
                         auto const tail = position();
                         advance();  // eats the closing paren
+                        if (!at_eol()) {
+                            return error("unexpected token after FORMAT "
+                                         "statement");
+                        }
                         return std::string(head, tail);
                     }
                 }
@@ -1311,11 +1349,146 @@ parser::expected<parser::keyword> parser::parse_keyword() {
 parser::expected<variable_list_t> parser::parse_variable_list() {
     auto list = variable_list_t{};
     do {
-        auto const identifier = parse_identifier();
-        if (identifier.empty()) return error("expected variable name in list");
-        list.push_back(identifier);
+        auto const item = parse_variable_list_item();
+        if (!item.has_value()) return error(item.error());
+        list.push_back(item.value());
     } while (accept(','));
     return list;
+}
+
+parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
+    if (accept('(')) {  // should be indexed array expression and index control
+        auto const array = parse_identifier();
+        if (array.empty()) return error("expected array name");
+        auto const symbol = m_current_unit->find_symbol(array);
+        if (symbol.shape.empty()) {
+            return error("expected array name, saw '{}'", array);
+        }
+        auto const subscripts = parse_subscript_list();
+        if (!subscripts.has_value()) return error(subscripts.error());
+        if (subscripts.value().size() != symbol.shape.size()) {
+            return error("expected {} subscripts for '{}'",
+                         symbol.shape.size(), array);
+        }
+        if (!accept(',')) {
+            return error("missing ',' separating the indexed expression from "
+                         "the index control");
+        }
+        auto const control = parse_constant_index_control();
+        if (!control.has_value()) return error(control.error());
+        if (!accept(')')) return error("missing ')' after index control");
+        return variable_list_item_t{array, subscripts.value(), control.value()};
+    }
+
+    auto const name = parse_identifier();
+    if (name.empty()) {
+        return error("expected variable name in variable list");
+    }
+    auto symbol = m_current_unit->find_symbol(name);
+    if (symbol.type == datatype::unknown) {
+        symbol.type = m_current_unit->implicit_type(name);
+        m_current_unit->update_symbol(symbol);
+    }
+    if (symbol.kind == symbolkind::subprogram ||
+        symbol.kind == symbolkind::external
+    ) {
+        return error("cannot use a subprogram in a variable list");
+    }
+    
+    if (symbol.shape.empty()) return variable_list_item_t{name};
+    if (match('(')) {
+        auto const subscripts = parse_subscript_list();
+        if (!subscripts.has_value()) return error(subscripts.error());
+        return variable_list_item_t{name, subscripts.value()};
+    }
+
+    // Implicitly apply to the entire array.
+    // TODO:  Generalize for more than 1 dimension.
+    auto const subscripts = subscript_list_t{
+        subscript_t{
+            .induction = symbol_name{"_I_"},
+            .coefficient = 1,
+            .offset = 0
+        }
+    };
+    auto const index_control = constant_index_control_t{
+        .index = symbol_name{"_I_"},
+        .init  = symbol.shape[0].minimum,
+        .final = symbol.shape[0].maximum,
+        .step  = 1
+    };
+    return variable_list_item_t{name, subscripts, index_control};
+}
+
+parser::expected<constant_index_control_t>
+parser::parse_constant_index_control() {
+    auto const index = parse_identifier();
+    if (index.empty()) return error("missing index variable");
+
+    auto symbol = m_current_unit->find_symbol(index);
+    if (symbol.type == datatype::unknown) {
+        symbol.type = datatype::INTEGER;
+    }
+    if (symbol.type != datatype::INTEGER) {
+        return error("index must be an integer variable");
+    }
+    if (symbol.kind == symbolkind::subprogram ||
+        symbol.kind == symbolkind::external
+    ) {
+        return error("index cannot be a subprogram");
+    }
+    if (!symbol.shape.empty()) return error("index cannot be an array");
+    m_current_unit->update_symbol(symbol);
+
+    if (!accept('=')) return error("expected '=' in index control");
+    auto const k0 = parse_constant();
+    if (!k0.has_value()) return error(k0.error());
+    if (k0.value().type != datatype::INTEGER) {
+        return error("initial value for induction must be an INTEGER constant");
+    }
+    auto const init = k0.value().value;
+    if (!accept(',')) return error("expected ',' in index control");
+    auto const k1 = parse_constant();
+    if (!k1.has_value()) return error(k1.error());
+    if (k1.value().type != datatype::INTEGER) {
+        return error("final value for induction must be an INTEGER constant");
+    }
+    auto const final = k1.value().value;
+    auto step = machine_word_t{1};
+    if (accept(',')) {
+        auto const k2 = parse_constant();
+        if (!k2.has_value()) return error(k2.error());
+        if (k2.value().type != datatype::INTEGER) {
+            return error("increment for induction must be an INTEGER constant");
+        }
+        step = k2.value().value;
+    }
+    return constant_index_control_t{index, init, final, step};
+}
+
+parser::expected<subscript_list_t> parser::parse_subscript_list() {
+    auto list = subscript_list_t{};
+    if (!accept('(')) return error("expected '(' for subscripting");
+    do {
+        auto const subscript = parse_subscript();
+        if (!subscript.has_value()) return error(subscript.error());
+        list.push_back(subscript.value());
+    } while (accept(','));
+    if (!accept(')')) return error("expected ')' after subscript");
+    return list;
+}
+
+parser::expected<subscript_t> parser::parse_subscript() {
+    // TODO:  Allow any permutation of:  coefficient * index +|- offset
+    auto const induction = parse_identifier();
+    if (induction.empty()) return error("expected induction variable");
+    machine_word_t coefficient = 1;
+    machine_word_t offset = 0;
+    return subscript_t{
+        .induction = induction,
+        .coefficient = coefficient,
+        .offset = offset
+    };
 }
 
 symbol_name parser::parse_identifier() {
@@ -1731,6 +1904,7 @@ parser::keyword parser::look_up_keyword(std::string_view token) {
         {"PROGRAM",     keyword::PROGRAM    },
         {"SUBROUTINE",  keyword::SUBROUTINE },
         {"READ",        keyword::READ       },
+        {"REAL",        keyword::REAL       },
         {"RETURN",      keyword::RETURN     },
         {"STOP",        keyword::STOP       },
         {"TYPE",        keyword::TYPE       }

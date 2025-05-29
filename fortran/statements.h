@@ -228,7 +228,7 @@ class type_statement : public basic_statement {
             basic_statement(), m_format(format), m_items(items) {}
 
     private:
-        std::string do_generate(unit const &) const override;
+        std::string do_generate(unit const &u) const override;
         void do_mark_referenced(unit &u) const override;
 
         statement_number_t  m_format;

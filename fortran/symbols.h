@@ -20,7 +20,7 @@ enum class datatype {
     none,     // SUBROUTINEs don't have a type
     // basic types
     INTEGER,  // machine word-sized signed integer
-    REAL,     // not implemented
+    REAL,     // experimenting with partial implementation, not supported
     DOUBLE,   // not implemented
     COMPLEX,  // not implemented
     LOGICAL,  // a bool essentially

@@ -34,7 +34,7 @@ namespace {
     }
 
     static void mark_io_list_item_referenced(io_list_item const &item, unit &u) {
-        item.variable->mark_referenced(u);
+        u.mark_symbol_referenced(item.variable);
         mark_index_control_referenced(item.index_control, u);
     }
 
@@ -209,7 +209,7 @@ std::string pause_statement::do_generate(unit const &) const {
 }
 
 
-std::string read_statement::do_generate(unit const &) const {
+std::string read_statement::do_generate(unit const &u) const {
     auto const preamble = std::format(
         "  io_loadrecord(TMP_WRAP({}));\n"
         "  io_selectformat(fmt{});\n",
@@ -219,10 +219,21 @@ std::string read_statement::do_generate(unit const &) const {
     for (auto const &item : m_items) {
         auto input_item = std::string{};
         if (item.index_control.index.empty()) {
-            input_item =
-                std::format("  io_input({});\n",
-                            item.variable->generate_reference());
+            auto variable_ref = std::string{};
+            if (item.indices.empty()) {
+                auto const variable_expr = variable_node{item.variable};
+                variable_ref = variable_expr.generate_reference();
+            } else {
+                auto const symbol = u.find_symbol(item.variable);
+                auto const array_expr =
+                    array_index_node{item.variable, symbol.shape, item.indices};
+                variable_ref = array_expr.generate_reference();
+            }
+            input_item = std::format("  io_input({});\n", variable_ref);
         } else {
+            auto const symbol = u.find_symbol(item.variable);
+            auto const array_expr =
+                array_index_node{item.variable, symbol.shape, item.indices};
             input_item = std::format(
                 "  for (*v{0} = TMP_WRAP({1}); "
                        "in_range(*v{0}, TMP_WRAP({1}), TMP_WRAP({2})); "
@@ -235,14 +246,12 @@ std::string read_statement::do_generate(unit const &) const {
                 item.index_control.init->generate_value(),
                 item.index_control.final->generate_value(),
                 item.index_control.step->generate_value(),
-                item.variable->generate_reference());
+                array_expr.generate_reference());
         }
         inputs.append(input_item);
     }
 
-    return std::format(
-        "{{\n{}{} }}",
-        preamble, inputs);
+    return std::format("{{\n{}{} }}", preamble, inputs);
 }
 
 void read_statement::do_mark_referenced(unit &u) const {
@@ -280,7 +289,7 @@ void stop_statement::do_mark_referenced(unit &u) const {
 }
 
 
-std::string type_statement::do_generate(unit const &) const {
+std::string type_statement::do_generate(unit const &u) const {
     auto const preamble =
         std::format("  io_selectformat(fmt{});\n", m_format);
 
@@ -288,10 +297,21 @@ std::string type_statement::do_generate(unit const &) const {
     for (auto const &item : m_items) {
         auto output_item = std::string{};
         if (item.index_control.index.empty()) {
-            output_item =
-                std::format("  io_output(0, {});\n",
-                            item.variable->generate_reference());
+            auto variable_ref = std::string{};
+            if (item.indices.empty()) {
+                auto const variable_expr = variable_node{item.variable};
+                variable_ref = variable_expr.generate_reference();
+            } else {
+                auto const symbol = u.find_symbol(item.variable);
+                auto const array_expr =
+                    array_index_node{item.variable, symbol.shape, item.indices};
+                variable_ref = array_expr.generate_reference();
+            }
+            output_item = std::format("  io_output(0, {});\n", variable_ref);
         } else {
+            auto const symbol = u.find_symbol(item.variable);
+            auto const array_expr =
+                array_index_node{item.variable, symbol.shape, item.indices};
             output_item = std::format(
                 "  for (*v{0} = TMP_WRAP({1}); "
                        "in_range(*v{0}, TMP_WRAP({1}), TMP_WRAP({2})); "
@@ -304,7 +324,7 @@ std::string type_statement::do_generate(unit const &) const {
                 item.index_control.init->generate_value(),
                 item.index_control.final->generate_value(),
                 item.index_control.step->generate_value(),
-                item.variable->generate_reference());
+                array_expr.generate_reference());
         }
         outputs.append(output_item);
     }
