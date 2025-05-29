@@ -206,6 +206,7 @@ class parser {
         expected<openkey> parse_open_keyword();
         expected<operator_t> parse_operator();
         expected<constant_t> parse_constant();
+        expected<constant_t> parse_numeric_constant();
         expected<machine_word_t> parse_integer_constant();
         expected<machine_word_t> parse_literal_constant();
         expected<machine_word_t> parse_logical_constant();

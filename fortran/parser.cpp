@@ -167,7 +167,9 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::EXTERNAL:     return parse_external();
         case keyword::INTEGER:      return parse_type_specification(datatype::INTEGER);
         case keyword::LOGICAL:      return parse_type_specification(datatype::LOGICAL);
-        case keyword::REAL:         return parse_type_specification(datatype::REAL);
+        case keyword::REAL:
+            warn("support for REAL is tentative and incomplete");
+            return parse_type_specification(datatype::REAL);
         default:
             // At this transition from phase2 to phase3, we can determine the
             // types for any symbols that are still unknown.
@@ -1180,22 +1182,6 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
     };
 }
 
-#if 0
-parser::expected<array_with_indices> parser::parse_array_with_indices() {
-    // <array_name> '(' <argument_list> ')'
-    auto const array = parse_identifier();
-    if (array.empty()) return error("missing array name");
-    auto symbol = m_current_unit->find_symbol(array);
-    if (symbol.shape.empty()) return error("'{}' is not an array", array);
-    if (!match('(')) {
-        return error("expected index(es) into array '{}'", array);
-    }
-    auto const index = parse_argument_list();
-    if (!index.has_value()) return error(index.error());
-    return array_with_indices(array, index.value());
-}
-#endif
-
 parser::expected<index_control_t> parser::parse_index_control() {
     auto const index = parse_identifier();
     if (index.empty()) return error("missing index variable");
@@ -1570,11 +1556,8 @@ parser::expected<constant_t> parser::parse_constant() {
     switch (current()) {
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-        case '-': case '"': {
-            auto const k = parse_integer_constant();
-            if (!k.has_value()) return error(k.error());
-            return constant_t{k.value(), datatype::INTEGER};
-        }
+        case '-': case '"':
+            return parse_numeric_constant();
         case '\'': {
             auto const k = parse_literal_constant();
             if (!k.has_value()) return error(k.error());
@@ -1587,6 +1570,33 @@ parser::expected<constant_t> parser::parse_constant() {
         }
     }
     return error("expected a constant");
+}
+
+parser::expected<constant_t> parser::parse_numeric_constant() {
+    if (accept('"')) {
+        auto const octal = parse_integer(8);
+        if (!octal.has_value()) return error(octal.error());
+        return constant_t{octal.value(), datatype::INTEGER};
+    }
+    auto const parsed = parse_integer(10);
+    if (!parsed.has_value()) return error(parsed.error());
+    auto whole = parsed.value();
+    auto const sign = (whole < 0) ? -1.0f : 1.0f;
+    auto const bookmark = position();
+    if (accept('.') && match_digit()) {
+        // This is pretty hokey parsing for real numbers, but CROW0000 uses only
+        // basic REAL constants.
+        auto numer = machine_word_t(consume() - '0');
+        auto denom = 10.0f;
+        while (match_digit() && denom < 10'000'000.0f) {
+            numer = 10*numer + consume() - '0';
+            denom *= 10.0f;
+        }
+        auto const real = sign*(sign*whole + numer/denom);
+        return constant_t{real};
+    }
+    m_it = bookmark;
+    return constant_t{whole, datatype::INTEGER};
 }
 
 parser::expected<machine_word_t> parser::parse_integer_constant() {

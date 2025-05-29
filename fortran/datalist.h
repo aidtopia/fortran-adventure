@@ -4,6 +4,7 @@
 #include "machine.h"
 #include "symbols.h"
 
+#include <bit>
 #include <vector>
 
 namespace aid::fortran {
@@ -11,7 +12,9 @@ namespace aid::fortran {
 struct constant_t {
     constant_t(machine_word_t v, datatype t) :
         value((v << (64-36)) >> (64-36)), type(t) {};
-
+    explicit constant_t(float real) :
+        value((static_cast<machine_word_t>(std::bit_cast<std::uint32_t>(real))<<32)>>32),
+        type(datatype::REAL) {};
     machine_word_t value;
     datatype       type;
 };
