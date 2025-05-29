@@ -135,6 +135,22 @@ void subIFILE(word_t *unit, word_t *file) {
     io_open(*unit, buffer);
 }
 )"}
+#if 0 // soon, but not yet
+,
+
+        builtin_t{symbol_name{"RAN"},
+R"(
+// Returns a random REAL value between 0.0 and 1.0 (inclusive).
+word_t fnRAN(word_t *state) {
+    if (*state == 0) {
+        *state = time(NULL);
+        srand((unsigned int)(*state));
+    }
+    const float r = 1.0f * rand() / RAND_MAX;
+    return ( ( (word_t)(*(uint32_t*)(&r)) ) << 32 ) >> 32;
+}
+)"}
+#endif
     };
 
 }
