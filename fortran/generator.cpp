@@ -63,7 +63,7 @@ namespace {
         symbol_name name;
         std::string_view code;
     };
-    static auto constexpr builtins = std::array<builtin_t, 7>{
+    static auto constexpr builtins = std::array<builtin_t, 8>{
         builtin_t{symbol_name{"IABS"},
 R"(word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
 )"},
@@ -134,9 +134,7 @@ void subIFILE(word_t *unit, word_t *file) {
     buffer[5] = '\0';
     io_open(*unit, buffer);
 }
-)"}
-#if 0 // soon, but not yet
-,
+)"},
 
         builtin_t{symbol_name{"RAN"},
 R"(
@@ -150,7 +148,6 @@ word_t fnRAN(word_t *state) {
     return ( ( (word_t)(*(uint32_t*)(&r)) ) << 32 ) >> 32;
 }
 )"}
-#endif
     };
 
 }
@@ -767,33 +764,43 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
 }
 
 void generator::generate_builtins(program const &prog) const {
-    // Include any "built-in" functions and subroutines that are referenced by
-    // any unit.
-    auto all_referenced_subs = std::set<symbol_name>{};
+    // Find all functions and subroutines that are referenced in any unit.
+    auto undefined_subs = std::set<symbol_name>{};
     auto const subs_refed_by_main =
         prog.extract_symbols(is_referenced_subprogram);
     for (auto const &s : subs_refed_by_main) {
-        all_referenced_subs.insert(s.name);
+        undefined_subs.insert(s.name);
     }
     auto const subprograms = prog.extract_subprograms();
     for (auto const *pu : subprograms) {
         auto const subs_refed_by_unit =
             pu->extract_symbols(is_referenced_subprogram);
         for (auto const &s : subs_refed_by_unit) {
-            all_referenced_subs.insert(s.name);
+            undefined_subs.insert(s.name);
         }
     }
 
+    // Remove ones that are defined.
+    undefined_subs.erase(prog.unit_name());
+    for (auto const *pu : subprograms) {
+        undefined_subs.erase(pu->unit_name());
+    }
+
+    // Provide built-in ones.
     bool any_builtins = false;
     for (auto const &builtin : builtins) {
-        if (all_referenced_subs.contains(builtin.name)) {
+        if (undefined_subs.contains(builtin.name)) {
             if (!any_builtins) {
                 spew("// Emulated PDP-10 system library subroutines.\n");
                 any_builtins = true;
             }
             spew("{}", builtin.code);
+            undefined_subs.erase(builtin.name);
         }
     }
+
+    // In theory, we could provide error messages here if there's anything left
+    // in `undefined_subs`. Unfortunately, that includes statement functions.
 }
 
 void generator::generate_common_blocks(program const &prog) const {

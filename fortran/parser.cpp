@@ -279,7 +279,7 @@ parser::expected<statement_t> parser::parse_function(datatype type) {
     }
 
     // Make sure the function is described correctly in the main program's
-    // symbol table.
+    // symbol table.  TODO:  Is this still necessary?
     auto func = m_program.find_symbol(name);
     if (func.type != datatype::unknown && func.type != type) {
         return error("return type of function {} does not match that of the "

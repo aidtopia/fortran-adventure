@@ -106,7 +106,7 @@ struct symbol_info {
     datatype    type = datatype::unknown;
     array_shape shape;
     std::vector<machine_word_t> init_data;
-    bool        referenced;  // assigned (other than init), read, or ref-passed
+    bool        referenced;
 
     // NOTE the meaning of the index field above depends on the kind:
     //  symbolkind::
@@ -115,8 +115,14 @@ struct symbol_info {
     //      argument    index is the argument's position in the arg list
     //                  (functions use argument 0 for return value)
     //      subprogram  the number of arguments needed to call
-    //      external    index not needed?  still figuring out external
+    //      external    index not needed
     //      label       a statement number used as a jump target
+    //
+    // `referenced` means the symbol is assigned to (other than initial data),
+    // read from, called, invoked, or ref-passed.  For labels, it means it is
+    // the target of a GOTO statement.  Any symbol that's not referenced in the
+    // program will be dropped in translation (to avoid warnings from the C
+    // compiler).
 };
 
 // The meaning of symbol_info::index depends on symbol_info::kind:
