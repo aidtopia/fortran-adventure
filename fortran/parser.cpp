@@ -270,18 +270,6 @@ parser::expected<statement_t> parser::parse_function(datatype type) {
         symbol.index = index++;
         m_current_unit->update_symbol(symbol);
     }
-
-    // Make sure the function is described correctly in the main program's
-    // symbol table.  TODO:  Is this still necessary?
-    auto func = m_program.find_symbol(name);
-    if (func.type != datatype::unknown && func.type != type) {
-        return error("return type of function {} does not match that of the "
-                     "main program", name);
-    }
-    func.type = type;
-    func.kind = symbolkind::subprogram;
-    func.index = static_cast<unsigned>(params.value().size());
-    m_program.update_symbol(func);
     return nullptr;
 }
 
@@ -293,7 +281,7 @@ parser::expected<statement_t> parser::parse_subroutine() {
     // empty parentheses.
     auto params = parameter_list_t{};
     if (match('(')) {
-        // But if it does have an opening parenthesis, it better be balanced.
+        // But if it does have an opening parenthesis, there are parameters.
         auto const param_list = parse_parameter_list();
         if (!param_list.has_value()) return error(param_list.error());
         params = param_list.value();
@@ -311,8 +299,7 @@ parser::expected<statement_t> parser::parse_subroutine() {
         m_current_unit->update_symbol(symbol);
     }
 
-    // The subroutine should already be in the program's symbol table, but just
-    // in case...
+    // The subroutine is likely already be in the program's symbol table.
     if (m_program.has_symbol(name)) {
         auto const symbol = m_program.find_symbol(name);
         if (symbol.kind != symbolkind::subprogram ||
@@ -320,13 +307,6 @@ parser::expected<statement_t> parser::parse_subroutine() {
         ) {
             return error("SUBROUTINE {} has a conflicting return type",  name);
         }
-    } else {
-        m_program.update_symbol(symbol_info{
-            .name = name,
-            .kind = symbolkind::subprogram,
-            .index = static_cast<unsigned>(params.size()),
-            .type = datatype::none
-        });
     }
     return nullptr;
 }
