@@ -248,7 +248,7 @@ parser::expected<statement_t> parser::parse_program() {
     if (name.empty()) return error("PROGRAM requires a name");
     if (!at_eol()) return error("unexpected token after PROGRAM statement");
     begin_program(name);
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_function(datatype type) {
@@ -289,7 +289,7 @@ parser::expected<statement_t> parser::parse_function(datatype type) {
     func.kind = symbolkind::subprogram;
     func.index = static_cast<unsigned>(params.value().size());
     m_program.update_symbol(func);
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_subroutine() {
@@ -335,7 +335,7 @@ parser::expected<statement_t> parser::parse_subroutine() {
             .type = datatype::none
         });
     }
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_end() {
@@ -422,7 +422,7 @@ parser::expected<statement_t> parser::parse_common() {
         m_current_unit->set_comdat_count(block, index);
     } while (!at_eol());
 
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_data() {
@@ -492,7 +492,7 @@ parser::expected<statement_t> parser::parse_data() {
         }
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after DATA statement");
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_dimension() {
@@ -510,7 +510,7 @@ parser::expected<statement_t> parser::parse_dimension() {
         m_current_unit->update_symbol(std::move(symbol));
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after DIMENSION statement");
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_external() {
@@ -523,7 +523,7 @@ parser::expected<statement_t> parser::parse_external() {
         m_current_unit->update_symbol(symbol);
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after EXTERNAL statement");
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_format(statement_number_t number) {
@@ -555,7 +555,7 @@ parser::expected<statement_t> parser::parse_implicit() {
         }
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after IMPLICIT statement");
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<parser::prefix_set_t> parser::parse_implicit_prefixes() {
@@ -598,7 +598,7 @@ parser::expected<statement_t> parser::parse_type_specification(datatype type) {
         m_current_unit->update_symbol(std::move(symbol));
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after type specification");
-    return make<nonexecutable_statement>();
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_assignment() {

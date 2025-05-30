@@ -7,10 +7,6 @@
 
 namespace aid::fortran {
 
-std::string nonexecutable_statement::do_generate(unit const &) const {
-    return "";
-}
-
 namespace {
 
     static std::string format_arguments(argument_list_t const &args) {

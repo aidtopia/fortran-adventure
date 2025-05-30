@@ -12,11 +12,6 @@
 
 namespace aid::fortran {
 
-class nonexecutable_statement : public basic_statement {
-    private:
-        std::string do_generate(unit const &u) const override;
-};
-
 class assignment_statement : public basic_statement {
     public:
         assignment_statement(expression_t lvalue, expression_t rhs) :
