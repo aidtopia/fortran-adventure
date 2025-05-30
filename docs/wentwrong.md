@@ -2,7 +2,7 @@
 
 As I worked on the project, I mostly had to study the produced C code to determine whether it was right.  (The generated code isn't particularly easy to read.)  Even with stubs in place, the translated code could not compile until I reached "feature complete."  One or two variables or statement labels were undefined until the last stub was replaced.
 
-To my delight, it then compiled and linked.  I had expected that there would be more problems to fix before it got that far.  I'd been using a batch file to run the translator, and then--if it succeeded--compile and link the translated code.  I'd forgotten that it would then execute the code if the link succeeded, so I was shocked when the program just started running.
+To my delight, it then compiled and linked.  I had expected that there would be more problems to fix before it got that far.  I'd been using a batch file to run the translator, and then&mdash;if it succeeded&mdash;compile and link the translated code.  I'd forgotten that it would then execute the code if the link succeeded, so I was shocked when the program just started running.
 
 Of course, it crashed almost immediately after printing the 'INITIALIZING...' message.
 
@@ -102,6 +102,8 @@ At the same point I was having problems with the logical NOT operator, there was
 
 I believe I can muck with my implementation of the DATE function to provide non-digits for the year that would cause Adventure to produce positive values over a hundred.  That would get us to at least 2077 without changing the Adventure source code.  But I'll keep that in my pocket for now.
 
+[**UPDATE**: The Y2K fix is in and enabled by default.  It can be disabled with the command line option `-y2k-`.  There are also command line options to override the date, the time, or both.]
+
 ### Signs of an extended problem
 
 Representing 36-bit machine words with 64-bit integers requires special attention to sign extension, as mentioned in the portion about A5 text.  Despite lots of planning to deal with that for packed character data, there are places where Adventure uses octal constants to represent bitmasks, and those were not extended.  So I added a constructor for the translator's constant_t that does sign extension on the value type.  That should help with all constants.
@@ -110,7 +112,7 @@ I didn't expect that to totally solve the problem, but it does solve the couple 
 
 ### X marks the spot
 
-I hadn't implemented the 'X' specifications for FORMAT.  They are used to specify the carriage control in most of the FORMATs in the maintenance mode.  It's almost as if a different person wrote that part of the code.  Anyway, implementing 'X' involved some rewriting of `io_output`, which, I think, solved another problem I hadn't noted before.  Anyway, the challenge word to prove your a wizard is now printed.
+I hadn't implemented the 'X' specifications for FORMAT.  They are used to specify the carriage control in most of the FORMATs in the maintenance mode.  It's almost as if a different person wrote that part of the code.  Anyway, implementing 'X' involved some rewriting of `io_output`, which, I think, solved another problem I hadn't noted before.  Anyway, the challenge word to prove you're a wizard now appears.
 
 ### More sign extension woes
 

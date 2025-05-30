@@ -9,15 +9,17 @@ There are two unnecessary variable declarations left.  Both are parameters in a 
 ### What's Next
 
 - [x] Move the project to a public repository
-- [ ] Reimplement statement functions to avoid unnecessary variables
 - [x] Play an entire game [I didn't get all the treasures before lamp died]
 - [x] Provide a command line option to map the hardcoded file name to another
 - [x] Provide command line options to override DATE and TIME
 - [x] WOOD0350v2 (a.k.a., advent.for)
 - [x] WOOD0350v1 (a.k.a., adven.f4 and advn2.f4)
-- [ ] CROW0000_f4_1977-03-31 (a.k.a., adv.f4) [very close, I think]
+- [x] CROW0000_f4_1977-03-31 (a.k.a., adv.f4)
+- [ ] consider BLKT0350
+- [ ] consider SUPN0350
 - [ ] Enable save and restore by emulating core images
-- [ ] Write better notes about how Adventure works
+- [ ] Reimplement statement functions to avoid unnecessary variables
+- [ ] Write better notes about how Adventure works, comparing versions, etc.
 
 
 ## WOOD0350v1
@@ -68,7 +70,7 @@ In the end, I got the indexing working in DATA statements.
 
 When I embarked on the project, I decided that, since the Adventure code&mdash;as I knew it at the time&mdash;uses only INTEGER, LOGICAL, and packed ASCII data, I could largely ignore data types and simply treat all values as INTEGERs in machine words.  (I still don't regret that decision.)
 
-But CROW0000 relies on `RAN`, a system-provided random number generator that returns REAL values between 0.0 and 1.0.  The WOOD0350 versions provide their own INTEGER version of RAN, noting: 
+But CROW0000 relies on RAN, a system-provided random number generator that returns REAL values between 0.0 and 1.0.  The WOOD0350 versions provide their own INTEGER version of RAN, noting: 
 
 ```fortran
       INTEGER FUNCTION RAN(RANGE)
@@ -98,13 +100,13 @@ void compare(float a, float b) {
 
 So, as long as we're careful about sign extension, it should be sufficient to stash the floating point representation in a machine word.
 
-Apparently, RAN was a real loser, so the quality of our version doesn't need to be great.  We'll just wrap `rand` from the C run-time library.
+Apparently, RAN was a real loser, so the quality of our version doesn't need to be great.  We'll just wrap `rand()` from the C run-time library.
 
 So, to accommodate CROW0000, the translator needs:
 
-[x] parse simple REAL constants
-[x] allow REAL type specification statements
-[x] provide an implementation of `RAN`
+- [x] parse simple REAL constants
+- [x] allow REAL type specification statements
+- [x] provide an implementation of RAN
 
 To avoid breaking WOOD0350, I had to modify the code that provides the "built-in" functions to avoid providing an implementation for a subprogram that the source code implements itself.
 
