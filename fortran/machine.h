@@ -20,19 +20,20 @@ static_assert(sizeof(machine_word_t)*CHAR_BIT >= machine_word_bits);
 machine_word_t constexpr make_literal(std::string_view text) {
     // Up to five 7-bit ASCII characters can be packed into a machine word.
     auto constexpr bits_per_char = 7u;  // 7-bit ASCII only
+    auto constexpr mask_for_char = 0x7Fu;
     auto constexpr max_length    = machine_word_bits / bits_per_char;
     auto constexpr representation_bits = sizeof(machine_word_t) * CHAR_BIT;
 
     // If more than max_length characters in text, drop the leading ones.
     auto result = machine_word_t{0};
     for (auto const ch : text) {
-        result <<= 7;
-        result |= static_cast<unsigned char>(ch) & 0x7F;
+        result <<= bits_per_char;
+        result |= static_cast<unsigned char>(ch) & mask_for_char;
     }
 
     // If fewer than max_length characters, pad with spaces.
     for (auto i = text.size(); i < max_length; ++i) {
-        result <<=7;
+        result <<= bits_per_char;
         result |= ' ';
     }
 
