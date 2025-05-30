@@ -167,9 +167,7 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::EXTERNAL:     return parse_external();
         case keyword::INTEGER:      return parse_type_specification(datatype::INTEGER);
         case keyword::LOGICAL:      return parse_type_specification(datatype::LOGICAL);
-        case keyword::REAL:
-            warn("support for REAL is tentative and incomplete");
-            return parse_type_specification(datatype::REAL);
+        case keyword::REAL:         return parse_type_specification(datatype::REAL);
         default:
             // At this transition from phase2 to phase3, we can determine the
             // types for any symbols that are still unknown.
@@ -189,16 +187,11 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
     if (m_phase == phase3) switch (kw) {
         case keyword::assignment:   return parse_assignment();
 
-        case keyword::INTEGER:
-            warn("INTEGER statement in Phase 3. This statement should come "
-                 "before any DATA statement or statement function "
-                 "definition.");
-            return parse_type_specification(datatype::INTEGER);
-        case keyword::LOGICAL:
-            warn("LOGICAL statement in Phase 3. This statement should come "
-                 "before any DATA statement or statement function "
-                 "definition.");
-            return parse_type_specification(datatype::LOGICAL);
+        // Strictly speaking, these should not happen before phase 3.  A warning
+        // will be issued.
+        case keyword::INTEGER:      return parse_type_specification(datatype::INTEGER);
+        case keyword::LOGICAL:      return parse_type_specification(datatype::LOGICAL);
+        case keyword::REAL:         return parse_type_specification(datatype::REAL);
 
         default:                    m_phase = phase4; break;
     }
@@ -583,6 +576,13 @@ parser::expected<parser::prefix_set_t> parser::parse_implicit_prefixes() {
 }
 
 parser::expected<statement_t> parser::parse_type_specification(datatype type) {
+    if (m_phase == phase3) {
+        warn("type specifications should come before any DATA statement or "
+             "statement function definition");
+    }
+    if (type == datatype::REAL) {
+        warn("support for REAL is tentative and incomplete");
+    }
     do {
         auto const variable = parse_identifier();
         if (variable.empty()) {
