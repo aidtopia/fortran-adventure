@@ -20,7 +20,7 @@ static_assert(sizeof(machine_word_t)*CHAR_BIT >= machine_word_bits);
 machine_word_t constexpr make_literal(std::string_view text) {
     // Up to five 7-bit ASCII characters can be packed into a machine word.
     auto constexpr bits_per_char = 7u;  // 7-bit ASCII only
-    auto constexpr mask_for_char = 0x7Fu;
+    auto constexpr mask_for_char = (1u << bits_per_char) - 1u;
     auto constexpr max_length    = machine_word_bits / bits_per_char;
     auto constexpr representation_bits = sizeof(machine_word_t) * CHAR_BIT;
 
@@ -39,7 +39,8 @@ machine_word_t constexpr make_literal(std::string_view text) {
 
     // The first character occupies the topmost bits of the machine word.  The
     // next character is packed just below, and so on.  If bits_per_char doesn't
-    // divide evenly into machine_word_bits, we'll need to shift up, leaving the
+    // divide evenly into machine_word_bits, we'll need to shift left, leaving
+    // the unused bits set to 0 in the least-significant positions.
     // leftover bottom bits 0.
     auto constexpr shift_for_unused_bits =
         machine_word_bits - (max_length * bits_per_char);
