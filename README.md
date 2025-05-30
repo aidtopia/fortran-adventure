@@ -16,8 +16,6 @@ The one I've always considered the original is WOOD0350v2.  Initially, that was 
 |[WOOD0350 Ver. 1](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES<sup>_c, d_</sup> | YES<sup>_a, b_</sup> | YES<sup>_e_</sup> | not yet<sup>_f_</sup> |
 |[CROW0000 (F4, 1977-03-31)](https://mipmip.org/advfamily/advfamily.html#CROW0000)| YES<sup>_g_</sup> | YES<sup>h</sup> | YES<sup>e, i</sup> | not yet<sup>_f_</sup> |
 
-Under consideration: [BLKT0350](https://mipmip.org/advfamily/advfamily.html#BLKT0350) and [SUPN0350](https://mipmip.org/advfamily/advfamily.html#CSUPN0350).
-
 * <sup>_a_</sup> The compiler warns about two variables that are declared but unused.  These can be ignored.  The problem is understood but not currently a high priority.
 * <sup>_b_</sup> The optimizer (which does more flow analysis) warns of a few instances of unreachable code.  Some subroutines do not return (by design), but the translator doesn't realize that.  The problem is understood but not currently a high priority.
 * <sup>_c_</sup> The translator warns about a type specification statement used later than it should be.  This is technically a bug in the Fortran source, but it's harmless in this case.
@@ -27,6 +25,8 @@ Under consideration: [BLKT0350](https://mipmip.org/advfamily/advfamily.html#BLKT
 * <sup>_g_</sup> Translator will warn about use of REAL, but it works.
 * <sup>_h_</sup> Compiler warns of unreachable code because the source has unreachable code.
 * <sup>_i_</sup> Commands must be ALL CAPS.
+
+For now, I'm considering [BLKT0350](https://mipmip.org/advfamily/advfamily.html#BLKT0350) and [SUPN0350](https://mipmip.org/advfamily/advfamily.html#CSUPN0350) to be out-of-scope for this project.  It appears the translator's everything's-a-36-bit-integer model would not be sufficient for those version.
 
 ## How to try it out
 

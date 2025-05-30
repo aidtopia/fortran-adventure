@@ -62,7 +62,17 @@ int main(int argc, char const *argv[]) {
     };
     auto paths = std::vector<std::filesystem::path>{};
     for (int i = 1; i < argc; ++i) {
-        paths.push_back(aid::resolve_filename(argv[i], extensions));
+        if (argv[i][0] == '@') {
+            // `@foo.txt` means read file names from foo.txt
+            if (auto indirect = std::ifstream{argv[i]+1}; indirect) {
+                auto line = std::string{};
+                while (std::getline(indirect, line)) {
+                    paths.push_back(aid::resolve_filename(line, extensions));
+                }
+            }
+        } else {
+            paths.push_back(aid::resolve_filename(argv[i], extensions));
+        }
     }
 
     // Parse the code.

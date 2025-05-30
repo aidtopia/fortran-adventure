@@ -15,8 +15,8 @@ There are two unnecessary variable declarations left.  Both are parameters in a 
 - [x] WOOD0350v2 (a.k.a., advent.for)
 - [x] WOOD0350v1 (a.k.a., adven.f4 and advn2.f4)
 - [x] CROW0000_f4_1977-03-31 (a.k.a., adv.f4)
-- [ ] consider BLKT0350
-- [ ] consider SUPN0350
+- [ ] ~~consider BLKT0350~~ out of scope (at least for now)
+- [ ] ~~consider SUPN0350~~ out of scope (at least for now)
 - [ ] Enable save and restore by emulating core images
 - [ ] Reimplement statement functions to avoid unnecessary variables
 - [ ] Write better notes about how Adventure works, comparing versions, etc.

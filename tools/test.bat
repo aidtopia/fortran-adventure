@@ -7,7 +7,9 @@ IF "%SRCDIR%"=="" SET SRCDIR=%~dp0\..\WOOD0350v2\
 CD %SRCDIR%
 ECHO:
 ECHO Translating Adventure from Fortran to C...
-FOR %%f IN (adv*.f*) DO %~dp0..\fortran\x64\Debug\fortran %%f
+@MKDIR target
+DIR /B *.f* > target\sources.txt
+%~dp0..\fortran\x64\Debug\fortran @target\sources.txt
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
@@ -22,10 +24,13 @@ CD ..
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Running Adventure...
-ECHO:
-DIR /B /S target\adv*.exe > target\run.bat
+FOR %%d IN (a*.dat) DO SET ADVENDATA=%%d
+FOR %%f IN (target\adv*.exe) DO ^
+ECHO %%f -t0:00 -d1-JAN-1977 -fTEXT=%ADVENDATA% > target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
+TYPE target\run.bat
+ECHO:
 CALL target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
 ECHO:
