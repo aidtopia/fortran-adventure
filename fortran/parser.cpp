@@ -1685,7 +1685,7 @@ parser::expected<statement_number_t> parser::parse_statement_number() {
 void parser::add_label(statement_number_t number) {
     if (number == no_statement_number) return;
     if (m_current_unit == nullptr) return;
-    auto symbol = m_current_unit->find_symbol(symbol_name{number});
+    auto symbol = m_current_unit->find_symbol(symbol_name{static_cast<unsigned int>(number)});
     symbol.kind = symbolkind::label;
     if (symbol.type == datatype::unknown) {
         symbol.type = datatype::none;
