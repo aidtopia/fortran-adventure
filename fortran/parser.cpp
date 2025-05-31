@@ -413,6 +413,14 @@ parser::expected<statement_t> parser::parse_data() {
             if (symbol.type == datatype::unknown) {
                 symbol.type = m_current_unit->implicit_type(item.variable);
             }
+            if (symbol.kind == symbolkind::common) {
+                // We let this go with just a warning because Adventure relies
+                // on it and it doesn't seem to cause any harm.  I noticed that
+                // SUPN0350 and others had to address this to compile with F77.
+                warn("common variable '{}' should not appear in a DATA "
+                     "statement other than in a BLOCK DATA subprogram",
+                     item.variable);  // also, we don't support BLOCK DATA
+            }
             if (symbol.shape.empty()) {     // scalar
                 assert(item.subscripts.empty());
                 if (data_iter == data_end) {

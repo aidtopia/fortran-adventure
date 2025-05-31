@@ -7,7 +7,8 @@ IF "%SRCDIR%"=="" SET SRCDIR=%~dp0\..\WOOD0350v2\
 CD %SRCDIR%
 ECHO:
 ECHO Translating Adventure from Fortran to C...
-@MKDIR target
+RMDIR /Q/S target > NUL 2> NUL
+MKDIR target > NUL 2> NUL
 DIR /B *.f* > target\sources.txt
 %~dp0..\fortran\x64\Debug\fortran @target\sources.txt
 SET TESTRESULT=%ERRORLEVEL%
@@ -15,10 +16,11 @@ IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Compiling the C code...
 CD target
-SET OPTOPT="/Od"
-REM SET OPTOPT="/O2 /DNDEBUG /GF"
+SET OPTOPT=/Od
+REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy
 REM TODO:  Add /WX to the compiler options.
-cl /nologo /std:c11 /W4 %OPTOPT% /ZI ADV*.c
+FOR %%f IN (ADV*.c) DO ^
+cl /nologo /std:c11 /W4 %OPTOPT% /Zi /Fd%%~nf.pdb %%f /link /INCREMENTAL:NO
 SET TESTRESULT=%ERRORLEVEL%
 CD ..
 IF %TESTRESULT% NEQ 0 GOTO DONE
