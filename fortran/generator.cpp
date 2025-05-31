@@ -185,6 +185,8 @@ void generator::generate_program(program const &prog) const {
 void usage() {
     printf(
         "\nOptions:\n\n"
+        "-CAPS            Capitalize all letters in the keyboard input\n"
+        "                 handler. Disabled by default.\n\n"
         "-d<date>         Force DATE to return the specified date. Allows\n"
         "                 many formats, but these are recommended:\n"
         "                   yyyy-mm-dd   example:  -d1977-01-01\n"
@@ -197,7 +199,7 @@ void usage() {
         "-y2k[-]          By default, DATE applies a hack to dates after 1999\n"
         "                 in an attempt to bypass Y2K bugs. To disable this\n"
         "                 hack, put '-' after the flag:  -y2k-\n\n"
-        "-?               Displays this option summary.\n\n");
+        "-h               Displays this option summary.\n\n");
 }
 )");
 
@@ -212,6 +214,8 @@ int main(int argc, const char *argv[]) {{
             if (strncmp(arg, "-y2k", 4) == 0) {{
                 kron_set_y2k(arg[4] != '-');
                 continue;
+            }} else if (strncmp(arg, "-CAPS", 5) == 0) {{
+                io_force_caps(arg[5] != '-');
             }} else switch (arg[1]) {{
                 case 'F': case 'f': io_addmapping(arg+2); continue;
                 case 'T': case 't': kron_override_time(arg+2); continue;
@@ -330,6 +334,7 @@ struct iocontext {
     int width;
     const char *(*reader)(int, const char *, word_t *);
     char *(*writer)(int, const word_t *, char *);
+    bool upcase;
 } io;
 
 void io_init() {
@@ -349,6 +354,7 @@ void io_init() {
     io.width = 0;
     io.reader = NULL;
     io.writer = NULL;
+    io.upcase = false;
 }
 
 void io_addmapping(const char *mapping) {
@@ -359,6 +365,8 @@ void io_addmapping(const char *mapping) {
         }
     }
 }
+
+void io_force_caps(bool enable) { io.upcase = enable; }
 
 void io_open(word_t unit, const char *name) {
     for (int i = 0; i < IO_MAX_MAPPINGS; ++i) {
@@ -380,10 +388,11 @@ void io_open(word_t unit, const char *name) {
 #endif
     }
     if (io.units[unit] == NULL) {
-        fprintf(stderr, "\nThe program failed to open a file named \"%s\".\n"
-                "You can restart the program with a file name mapping using "
-                "the \ncommand line option -f, like this:\n\n"
-                "    -f%s=<path>\n", name, name);
+        fprintf(stderr,
+            "\nThe program failed to open a file named \"%s\".\n"
+            "You can restart the program with a file name mapping using the\n"
+            "command line option -f, like this:\n\n"
+            "    -f%s=<path>\n", name, name);
         exit(EXIT_FAILURE);
     }
 }
@@ -395,8 +404,9 @@ void io_loadrecord(word_t unit) {
     assert(source != NULL);
     if (source != NULL) {
         while (i < size) {
-            const int ch = fgetc(source);
+            int ch = fgetc(source);
             if (ch == EOF || ch == '\n') break;
+            if (io.upcase && unit == 0 && islower(ch)) ch = toupper(ch);
             io.record[i++] = (char)ch;
         }
         assert(0 <= i && i < size);
