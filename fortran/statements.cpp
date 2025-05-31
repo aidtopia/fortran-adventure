@@ -102,7 +102,7 @@ std::string do_statement::do_generate(unit const &u) const {
     if (m_body.empty()) return ";";
     auto loop = std::format(
         "for (*v{0} = TMP_WRAP({1}); "
-             "in_range(*v{0}, TMP_WRAP({1}), TMP_WRAP({2})); "
+             "TMP_WRAP(in_range(*v{0}, {1}, {2})); "
              "*v{0} += TMP_WRAP({3})) {{\n",
         m_index_control.index,
         m_index_control.init->generate_value(),
@@ -232,7 +232,7 @@ std::string read_statement::do_generate(unit const &u) const {
                 array_index_node{item.variable, symbol.shape, item.indices};
             input_item = std::format(
                 "  for (*v{0} = TMP_WRAP({1}); "
-                       "in_range(*v{0}, TMP_WRAP({1}), TMP_WRAP({2})); "
+                       "TMP_WRAP(in_range(*v{0}, {1}, {2})); "
                        "*v{0} += TMP_WRAP({3})) {{\n"
                 "   tmp_push();\n"
                 "   io_input({4});\n"
@@ -310,7 +310,7 @@ std::string type_statement::do_generate(unit const &u) const {
                 array_index_node{item.variable, symbol.shape, item.indices};
             output_item = std::format(
                 "  for (*v{0} = TMP_WRAP({1}); "
-                       "in_range(*v{0}, TMP_WRAP({1}), TMP_WRAP({2})); "
+                       "TMP_WRAP(in_range(*v{0}, {1}, {2})); "
                         "*v{0} += TMP_WRAP({3})) {{\n"
                 "   tmp_push();\n"
                 "   io_output(0, {4});\n"
