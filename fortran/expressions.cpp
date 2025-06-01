@@ -45,10 +45,6 @@ namespace {
 
 }  // anonymous namespace
 
-std::string unary_node::do_generate_reference() const {
-    return std::format("tmp({})", do_generate_value());
-}
-
 std::string unary_node::do_generate_value() const {
     return std::format("{}({})",
                        operator_function(m_op), m_node->generate_value());
@@ -58,10 +54,6 @@ void unary_node::do_mark_referenced(unit &u) const {
     m_node->mark_referenced(u);
 }
 
-
-std::string binary_node::do_generate_reference() const {
-    return std::format("tmp({})", do_generate_value());
-}
 
 std::string binary_node::do_generate_value() const {
     return std::format("{}({}, {})",
@@ -74,10 +66,6 @@ void binary_node::do_mark_referenced(unit &u) const {
     m_rhs->mark_referenced(u);
 }
 
-
-std::string constant_node::do_generate_reference() const {
-    return std::format("tmp({})", do_generate_value());
-}
 
 std::string constant_node::do_generate_value() const {
     return std::format("{}", m_constant);
@@ -161,10 +149,6 @@ expression_t array_index_node::scale_up(
     return std::make_shared<binary_node>(index, operator_t::multiply, s);
 }
 
-
-std::string function_invocation_node::do_generate_reference() const {
-    return std::format("tmp({})", do_generate_value());
-}
 
 std::string function_invocation_node::do_generate_value() const {
     return std::format("TMP_WRAP(fn{}({}))",

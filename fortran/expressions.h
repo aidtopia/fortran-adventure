@@ -21,7 +21,6 @@ class unary_node : public expression_node {
         unary_node(operator_t op, expression_t node) : m_op(op), m_node(node) {}
 
     private:
-        std::string do_generate_reference() const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &) const override;
 
@@ -35,7 +34,6 @@ class binary_node : public expression_node {
             m_lhs(lhs), m_op(op), m_rhs(rhs) {}
 
     private:
-        std::string do_generate_reference() const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &) const override;
 
@@ -49,7 +47,6 @@ class constant_node : public expression_node {
         constant_node(machine_word_t constant) : m_constant(constant) {}
 
     private:
-        std::string do_generate_reference() const override;
         std::string do_generate_value() const override;
 
         machine_word_t m_constant;
@@ -118,7 +115,6 @@ class function_invocation_node : public expression_node {
         ) : m_function(function), m_arguments(arguments) {}
 
     private:
-        std::string do_generate_reference() const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &) const override;
         static std::string formatted_args(argument_list_t const &arguments);

@@ -1,6 +1,7 @@
 #ifndef AID_FORTRAN_EXPRESSION_H
 #define AID_FORTRAN_EXPRESSION_H
 
+#include <format>
 #include <memory>
 #include <string>
 
@@ -32,7 +33,11 @@ class expression_node {
         void mark_referenced(unit &u) const { return do_mark_referenced(u); }
 
     private:
-        virtual std::string do_generate_reference() const = 0;
+        virtual std::string do_generate_reference() const {
+            // This default implementation is appropriate for many but not all
+            // expression node types.
+            return std::format("tmp({})", do_generate_value());
+        }
         virtual std::string do_generate_value() const = 0;
         virtual void do_mark_referenced(unit &) const {};
 };
