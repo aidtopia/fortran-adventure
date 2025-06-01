@@ -25,7 +25,7 @@ namespace {
         if (control.index.empty()) return;
         u.mark_symbol_referenced(control.index);
         control.init->mark_referenced(u);
-        control.final->mark_referenced(u);
+        control.limit->mark_referenced(u);
         control.step->mark_referenced(u);
     }
 
@@ -100,20 +100,31 @@ std::string definition_statement::format_parameters(
 
 std::string do_statement::do_generate(unit const &u) const {
     if (m_body.empty()) return ";";
-    auto loop = std::format(
-        "for (*v{0} = TMP_WRAP({1}); "
-             "TMP_WRAP(in_range(*v{0}, {1}, {2})); "
-             "*v{0} += TMP_WRAP({3})) {{\n",
+    auto body = std::string{};
+    for (auto const &stmt : m_body) {
+        body.append(std::format("   {}\n", stmt->generate(u)));
+    }
+    // Structured as a do-while because a Fortran DO loop always does the first
+    // iteration, regardless of the limit and increment.
+    // NOTE: This assumes the limit and the step can be evaluated once before
+    // the first iteration.  I'm not sure whether that's how Fortran really
+    // works.
+    return std::format(
+        "{{\n"
+        "  const word_t limit{0} = TMP_WRAP({2});\n"
+        "  const word_t step{0} = TMP_WRAP({3});\n"
+        "  const word_t dir{0} = sign(step{0});\n"
+        "  *v{0} = TMP_WRAP({1});\n"
+        "  do {{\n{4}"
+        "   *v{0} += step{0};\n"
+        "  }} while (dir{0}*(*v{0} - limit{0}) <= 0);\n"
+        "}}",
         m_index_control.index,
         m_index_control.init->generate_value(),
-        m_index_control.final->generate_value(),
-        m_index_control.step->generate_value()
+        m_index_control.limit->generate_value(),
+        m_index_control.step->generate_value(),
+        body
     );
-    for (auto const &stmt : m_body) {
-        loop.append(std::format("  {}\n", stmt->generate(u)));
-    }
-    loop.append(" }");
-    return loop;
 }
 
 void do_statement::do_mark_referenced(unit &u) const {
@@ -240,7 +251,7 @@ std::string read_statement::do_generate(unit const &u) const {
                 "  }}\n",
                 item.index_control.index,
                 item.index_control.init->generate_value(),
-                item.index_control.final->generate_value(),
+                item.index_control.limit->generate_value(),
                 item.index_control.step->generate_value(),
                 array_expr.generate_reference());
         }
@@ -318,7 +329,7 @@ std::string type_statement::do_generate(unit const &u) const {
                 "  }}\n",
                 item.index_control.index,
                 item.index_control.init->generate_value(),
-                item.index_control.final->generate_value(),
+                item.index_control.limit->generate_value(),
                 item.index_control.step->generate_value(),
                 array_expr.generate_reference());
         }

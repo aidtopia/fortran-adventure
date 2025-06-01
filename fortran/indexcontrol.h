@@ -9,7 +9,7 @@ namespace aid::fortran {
 struct index_control_t {
     symbol_name index;
     expression_t init;
-    expression_t final;
+    expression_t limit;
     expression_t step;
 };
 
@@ -17,11 +17,10 @@ struct index_control_t {
 struct constant_index_control_t {
     symbol_name index;
     machine_word_t init;
-    machine_word_t final;
+    machine_word_t limit;
     machine_word_t step;
 };
 
 }
 
 #endif
-

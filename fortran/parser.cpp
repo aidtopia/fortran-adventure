@@ -55,7 +55,6 @@ parser::expected<program> parser::parse_stream(std::istream &in) {
 
 parser::expected<program> parser::parse_statements() {
     while (next_statement()) {
-        //std::print("{}\n", m_statement);
         auto const stmt = parse_full_statement();
         if (!stmt.has_value()) {
             return error("{}\n{}\n", stmt.error().message(), m_statement);
@@ -435,13 +434,13 @@ parser::expected<statement_t> parser::parse_data() {
                 if (control.step == 0) {
                     return error("induction step cannot be 0");
                 }
-                if ((control.init < control.final && control.step < 0) ||
-                    (control.init > control.final && control.step > 0)
+                if ((control.init < control.limit && control.step < 0) ||
+                    (control.init > control.limit && control.step > 0)
                 ) {
                     return error("induction step is in the wrong direction");
                 }
-                auto const lower = std::min(control.init, control.final);
-                auto const upper = std::max(control.init, control.final);
+                auto const lower = std::min(control.init, control.limit);
+                auto const upper = std::max(control.init, control.limit);
                 auto const &subscript = item.subscripts[0];
                 auto const &shape = symbol.shape;
                 auto const count = array_size(shape);
@@ -704,7 +703,6 @@ parser::expected<statement_t> parser::parse_do() {
 
     auto const loop = std::make_shared<do_statement>(control.value());
     while (next_statement()) {
-        //std::print("{}\n", m_statement);  // UGH!
         auto const stmt = parse_full_statement();
         if (!stmt.has_value()) return error(stmt.error());
         if (stmt.value() != nullptr) loop->add(stmt.value());
@@ -1165,7 +1163,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         name, argument_list_t{induction},
         {.index=induction_name,
          .init=std::make_shared<constant_node>(symbol.shape[0].minimum),
-         .final=std::make_shared<constant_node>(symbol.shape[0].maximum),
+         .limit=std::make_shared<constant_node>(symbol.shape[0].maximum),
          .step=std::make_shared<constant_node>(1)}
     };
 }
@@ -1193,12 +1191,12 @@ parser::expected<index_control_t> parser::parse_index_control() {
     auto const init = parse_expression();
     if (!init.has_value()) return error(init.error());
     if (!accept(',')) return error("expected ',' in index control");
-    auto const final = parse_expression();
-    if (!final.has_value()) return error(final.error());
+    auto const limit = parse_expression();
+    if (!limit.has_value()) return error(limit.error());
     auto const step =
         accept(',') ? parse_expression() : std::make_shared<constant_node>(1);
     if (!step.has_value()) return error(step.error());
-    return index_control_t{index, init.value(), final.value(), step.value()};
+    return index_control_t{index, init.value(), limit.value(), step.value()};
 }
 
 parser::expected<data_list_t> parser::parse_data_list() {
@@ -1388,7 +1386,7 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
     auto const index_control = constant_index_control_t{
         .index = symbol_name{"_I_"},
         .init  = symbol.shape[0].minimum,
-        .final = symbol.shape[0].maximum,
+        .limit = symbol.shape[0].maximum,
         .step  = 1
     };
     return variable_list_item_t{name, subscripts, index_control};
@@ -1427,7 +1425,7 @@ parser::parse_constant_index_control() {
     if (k1.value().type != datatype::INTEGER) {
         return error("final value for induction must be an INTEGER constant");
     }
-    auto const final = k1.value().value;
+    auto const limit = k1.value().value;
     auto step = machine_word_t{1};
     if (accept(',')) {
         auto const k2 = parse_constant();
@@ -1437,7 +1435,7 @@ parser::parse_constant_index_control() {
         }
         step = k2.value().value;
     }
-    return constant_index_control_t{index, init, final, step};
+    return constant_index_control_t{index, init, limit, step};
 }
 
 parser::expected<subscript_list_t> parser::parse_subscript_list() {
