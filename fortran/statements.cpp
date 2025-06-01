@@ -42,7 +42,7 @@ namespace {
 
 std::string assignment_statement::do_generate(unit const &) const {
     return std::format(
-        "*{} = TMP_WRAP({});",
+        "*{} = {};",
         m_lvalue->generate_reference(), m_rhs->generate_value());
 }
 
@@ -75,7 +75,7 @@ std::string indirect_call_statement::do_generate(unit const &) const {
 std::string continue_statement::do_generate(unit const &) const { return ";"; }
 
 std::string definition_statement::do_generate(unit const &) const {
-    return std::format("#define fn{}({}) TMP_WRAP({})",
+    return std::format("#define fn{}({}) {}",
         m_macro, format_parameters(m_params),
         m_definition->generate_value());
 }
@@ -111,10 +111,10 @@ std::string do_statement::do_generate(unit const &u) const {
     // works.
     return std::format(
         "{{\n"
-        "  const word_t limit{0} = TMP_WRAP({2});\n"
-        "  const word_t step{0} = TMP_WRAP({3});\n"
+        "  const word_t limit{0} = {2};\n"
+        "  const word_t step{0} = {3};\n"
         "  const word_t dir{0} = sign(step{0});\n"
-        "  *v{0} = TMP_WRAP({1});\n"
+        "  *v{0} = {1};\n"
         "  do {{\n{4}"
         "   *v{0} += step{0};\n"
         "  }} while (dir{0}*(*v{0} - limit{0}) <= 0);\n"
@@ -144,7 +144,7 @@ std::string goto_statement::do_generate(unit const &) const {
 
 
 std::string computed_goto_statement::do_generate(unit const &) const {
-    return std::format("switch (TMP_WRAP({})) {{\n{} }}",
+    return std::format("switch ({}) {{\n{} }}",
         m_expression->generate_value(), cases());
 }
 
@@ -165,7 +165,7 @@ std::string computed_goto_statement::cases() const {
 
 
 std::string if_statement::do_generate(unit const &u) const {
-    return std::format("if (truth(TMP_WRAP({}))) {}",
+    return std::format("if (truth({})) {}",
         m_condition->generate_value(), m_then->generate(u));
 }
 
@@ -177,7 +177,7 @@ void if_statement::do_mark_referenced(unit &u) const {
 
 std::string numeric_if_statement::do_generate(unit const &) const {
     return std::format(
-        "switch (sign(TMP_WRAP({}))) {{\n"
+        "switch (sign({})) {{\n"
         "  case -1: goto L{};\n"
         "  case  0: goto L{};\n"
         "  case  1: goto L{};\n"
@@ -192,7 +192,7 @@ void numeric_if_statement::do_mark_referenced(unit &u) const {
 
 
 std::string open_statement::do_generate(unit const &) const {
-    return std::format("io_open(TMP_WRAP({}), \"{}.DAT\");",
+    return std::format("io_open({}, \"{}.DAT\");",
         m_unit->generate_value(), escape_file_name(m_name));
 }
 
@@ -218,7 +218,7 @@ std::string pause_statement::do_generate(unit const &) const {
 
 std::string read_statement::do_generate(unit const &u) const {
     auto const preamble = std::format(
-        "  io_loadrecord(TMP_WRAP({}));\n"
+        "  io_loadrecord({});\n"
         "  io_selectformat(fmt{});\n",
         m_unit->generate_value(), m_format);
 
@@ -242,9 +242,9 @@ std::string read_statement::do_generate(unit const &u) const {
             auto const array_expr =
                 array_index_node{item.variable, symbol.shape, item.indices};
             input_item = std::format(
-                "  for (*v{0} = TMP_WRAP({1}); "
-                       "TMP_WRAP(in_range(*v{0}, {1}, {2})); "
-                       "*v{0} += TMP_WRAP({3})) {{\n"
+                "  for (*v{0} = {1}; "
+                       "in_range(*v{0}, {1}, {2}); "
+                       "*v{0} += {3}) {{\n"
                 "   tmp_push();\n"
                 "   io_input({4});\n"
                 "   tmp_pop(0);\n"
@@ -320,9 +320,9 @@ std::string type_statement::do_generate(unit const &u) const {
             auto const array_expr =
                 array_index_node{item.variable, symbol.shape, item.indices};
             output_item = std::format(
-                "  for (*v{0} = TMP_WRAP({1}); "
-                       "TMP_WRAP(in_range(*v{0}, {1}, {2})); "
-                        "*v{0} += TMP_WRAP({3})) {{\n"
+                "  for (*v{0} = {1}; "
+                       "in_range(*v{0}, {1}, {2}); "
+                        "*v{0} += {3}) {{\n"
                 "   tmp_push();\n"
                 "   io_output(0, {4});\n"
                 "   tmp_pop(0);\n"

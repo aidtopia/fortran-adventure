@@ -167,7 +167,8 @@ std::string function_invocation_node::do_generate_reference() const {
 }
 
 std::string function_invocation_node::do_generate_value() const {
-    return std::format("fn{}({})", m_function, formatted_args(m_arguments));
+    return std::format("TMP_WRAP(fn{}({}))",
+                       m_function, formatted_args(m_arguments));
 }
 
 void function_invocation_node::do_mark_referenced(unit &u) const {
