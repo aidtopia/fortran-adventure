@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <format>
 #include <fstream>
 #include <print>
@@ -57,6 +58,17 @@ namespace {
             return std::format("sub{}", sym.name);
         }
         return std::format("v{}", sym.name);
+    }
+
+    static std::string macro_defined(std::string_view c_stmt) {
+        auto constexpr directive = std::string_view("#define ");
+        if (!c_stmt.starts_with(directive)) return {};
+        auto const begin = c_stmt.cbegin() + directive.size();
+        auto it = begin;
+        while (it != c_stmt.end() && *it == ' ') ++it;
+        if (it == c_stmt.end()) return {};
+        while (it != c_stmt.end() && std::isalnum(*it)) ++it;
+        return std::string(begin, it);
     }
 
     struct builtin_t {
@@ -891,10 +903,14 @@ void generator::generate_unit(unit const &u) const {
              format.first, escape_string(format.second));
     }
 
+    auto macros_to_undef = std::vector<std::string>{};
     auto const &code = u.code();
     for (auto const &statement : code) {
         if (auto const c_stmt = statement->generate(u); !c_stmt.empty()) {
             spew(" {}\n", c_stmt);
+            if (auto const macro = macro_defined(c_stmt); !macro.empty()) {
+                macros_to_undef.push_back(macro);
+            }
         }
     }
 
@@ -909,6 +925,11 @@ void generator::generate_unit(unit const &u) const {
     if (stop_label.referenced) {
         spew(" L{}: exit(EXIT_SUCCESS);\n", stop_label.name);
     }
+
+    for (auto const &macro : macros_to_undef) {
+        spew(" #undef {}\n", macro);
+    }
+
     spew("}}\n");
 }
 
