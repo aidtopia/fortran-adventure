@@ -118,7 +118,7 @@ std::string do_statement::do_generate(unit const &u) const {
         "  do {{\n{4}"
         "   *v{0} += step{0};\n"
         "  }} while (dir{0}*(*v{0} - limit{0}) <= 0);\n"
-        "}}",
+        " }}",
         m_index_control.index,
         m_index_control.init->generate_value(),
         m_index_control.limit->generate_value(),

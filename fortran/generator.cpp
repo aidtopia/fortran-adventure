@@ -94,13 +94,6 @@ R"(word_t fnMOD(word_t *a, word_t *b) { return *a % *b; }
 
         builtin_t{symbol_name{"DATE"},
 R"(
-// Adventure won't compute the day of the week correctly after 1999 (which
-// matters only for enforcing cave hours). Using the -y2k command line option
-// causes DATE to return a bogus year that should trick Adventure's calculation
-// into working through February 28, 2100, at which point Adventure will expect
-// a leap day.
-bool y2k_hack = false;
-
 // Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
 void subDATE(word_t r[2]) {
     struct tm now; kron_time(&now);
@@ -176,8 +169,6 @@ void generator::generate_program(program const &prog) const {
 
     auto const subprograms = prog.extract_subprograms();
     if (!subprograms.empty()) {
-        // BUG:  Creates prototypes for statement definition functions, which
-        // are actually function-style preprocessor macros.
         spew("\n");
         for (auto const *pu : subprograms) {
             generate_prototype(*pu);
