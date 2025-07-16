@@ -58,6 +58,12 @@ TABLE SPACE USED:
 
 ### Adventure has a buffer underrun?
 
+**CORRECTION:** I was wrong in this section.  There is *no* buffer underrun in WOOD0350's initialization of the travel table.  The bug I observed must have been caused by a bug in an earlier version of my translator.  I cannot reproduce it now.  The Fortran code for this section looks correct, and it (essentially) matches the corresponding code in CROW0000, which never experienced this crash.  I think what I observed before may have been caused by a problem with the generated code reading the first record of the section.
+
+I'm keeping what I originally wrote as a log of my thinking at the time.
+
+---
+
 The next crash had indications that a variable (or the table entry it was copied from) had been stomped, presumably by an out-of-bounds access.
 
 Indeed, I found a buffer underrun, but it wasn't a translator bug--it's cooked right into Adventure's initialization:
