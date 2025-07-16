@@ -92,6 +92,14 @@ The translator was attempting a logical NOT operation on a crazy constant.  So i
 
 So I'm now treating all of these logical operators as bitwise:  `.AND.`, `.OR.`, `.NOT.`, `.XOR.`.  I don't understand `.EQV.` well enough to make a change to that yet, and Adventure doesn't use it.
 
+---
+
+TRIVIA:  Months after writing this section, I read an explanation of [why C's bitwise operators have weirdly low precedence](https://softwareengineering.stackexchange.com/questions/194635/why-do-bitwise-operators-have-lower-priority-than-comparisons).  Early versions of C didn't distinguish between the logical and bitwise operators.  And was `&`.  Whether that compiled to a logical or bitwise operation depended on the context.  When the operators were distinguished, `&` became bitwise.  By giving those lower precedence than the equality and comparison operators, old code that used `&` in conditional expressions would continue to work as before.
+
+I suspect the undistinguished operators of early C were modeled on what came before, like Fortran.  When writing the translator, I struggled to understand how to distinguish bitwise from logical operations.  The Fortran programming guides didn't address my questions.  I did learn that operators like `.AND.` do not perform short-circuit evaluation.  So my translator treats all of those operators as bitwise.  The result of a bitwise operation on logical operands is a value that will have the correct logical result though the result might not be exactly `.TRUE.` or `.FALSE.`, which is the motivation for the `truth` wrapper.
+
+---
+
 Conditions in IF-statements are always translated with a `truth` wrapper, so it would be pretty unusual for this to cause a problem.  If it does, I could check the symbol table when parsing the expression and select the logical operators when the operands are LOGICAL.
 
 Achievement Unlocked:  `WELCOME TO ADVENTURE!!  WOULD YOU LIKE INSTRUCTIONS?`
