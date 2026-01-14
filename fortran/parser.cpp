@@ -20,9 +20,13 @@
 namespace aid::fortran {
 
 parser::expected<program> parser::parse_files(
-    std::span<std::filesystem::path> const &paths
+    std::span<std::filesystem::path> paths
 ) {
     if (paths.empty()) return error("no source code provided");
+    std::vector<std::filesystem::path> sources;
+    auto const cwd = std::filesystem::current_path();
+    auto const base = cwd.parent_path();
+
     // Concatenate the files into a single stream.
     std::string buffer;
     for (auto const &path : paths) {
@@ -30,11 +34,16 @@ parser::expected<program> parser::parse_files(
         if (!in) return error("count not find or open \"{}\"", path.string());
         buffer.append(std::istreambuf_iterator<char>{in},
                       std::istreambuf_iterator<char>{});
+        auto const source =
+            (path.is_relative() ? cwd/path : path).lexically_proximate(base);
+        sources.push_back(source);
     }
     auto stream = std::stringstream{std::move(buffer)};
     auto const parsed = parse_stream(stream);
     if (!parsed.has_value()) return error(parsed.error());
+
     auto program = parsed.value();
+    program.set_source_files(sources);
 
     // If the program wasn't given a name, use the first source file's name.
     if (program.unit_name().empty()) {

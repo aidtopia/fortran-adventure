@@ -3,8 +3,8 @@ SETLOCAL
 SET TESTRESULT=1
 SET STARTINGDIR=%CD%
 SET SRCDIR=%1
-IF "%SRCDIR%"=="" SET SRCDIR=%~dp0\..\WOOD0350v2\
-CD %SRCDIR%
+IF "%SRCDIR%"=="" SET SRCDIR=%~dp0\..\WOOD0350v1\
+CD /D %SRCDIR%
 ECHO:
 ECHO Translating Adventure from Fortran to C...
 RMDIR /Q/S target > NUL 2> NUL
@@ -15,7 +15,7 @@ SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Compiling the C code...
-CD target
+CD /D target
 SET OPTOPT=/Od
 REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy
 REM TODO:  Add /WX to the compiler options.

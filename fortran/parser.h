@@ -44,7 +44,7 @@ class parser {
         template <typename T> using expected = std::expected<T, error_t>;
 
         static expected<program> parse_files(
-            std::span<std::filesystem::path> const &paths
+            std::span<std::filesystem::path> paths
         );
         static expected<program> parse_stream(std::istream &stream);
 

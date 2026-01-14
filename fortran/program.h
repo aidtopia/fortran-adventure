@@ -3,6 +3,8 @@
 
 #include "unit.h"
 
+#include <filesystem>
+#include <span>
 #include <vector>
 
 namespace aid::fortran {
@@ -12,6 +14,9 @@ class program : public unit {
         program() {}
         ~program() {}
 
+        void set_source_files(std::span<std::filesystem::path> files);
+        std::vector<std::filesystem::path> const &get_source_files() const;
+
         void add_subprogram(unit &&subprogram);
         void print_symbol_table(std::ostream &out) const override;
 
@@ -19,6 +24,7 @@ class program : public unit {
 
     private:
         std::vector<unit> m_subprograms;
+        std::vector<std::filesystem::path> m_source_files;
 };
 
 }

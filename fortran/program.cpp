@@ -4,6 +4,17 @@
 
 namespace aid::fortran {
 
+void program::set_source_files(std::span<std::filesystem::path> files) {
+    m_source_files.reserve(m_source_files.size() + files.size());
+    for (auto const &path : files) {
+        m_source_files.push_back(path);
+    }
+}
+
+std::vector<std::filesystem::path> const &program::get_source_files() const {
+    return m_source_files;
+}
+
 void program::add_subprogram(unit &&subprogram) {
     m_subprograms.push_back(std::move(subprogram));
 }

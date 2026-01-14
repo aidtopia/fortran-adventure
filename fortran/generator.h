@@ -19,14 +19,17 @@ class generator {
 
     private:
         void generate_program(program const &prog) const;
-        void generate_definitions() const;
+        void generate_machine_definitions() const;
         void generate_builtins(program const &prog) const;
+        void generate_prototypes(program const &prog) const;
         void generate_common_blocks(program const &prog) const;
-        void generate_prototype(unit const &u) const;
+        void generate_function_signature(unit const &u) const;
+        void generate_memory(program const &prog) const;
         void generate_unit(unit const &u) const;
         void generate_variable_definition(symbol_info const &var) const;
         void generate_array_definition(symbol_info const &array) const;
         void generate_scalar_definition(symbol_info const &scalar) const;
+        void lay_out_memory(program const &prog);
 
         template <typename... Args>
         void spew(std::format_string<Args...> fmt, Args && ... args) const {

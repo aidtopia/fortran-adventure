@@ -35,6 +35,10 @@ namespace {
     static bool is_referenced_subprogram(symbol_info const &a) {
         return a.kind == symbolkind::subprogram && a.referenced;
     }
+    static bool is_variable(symbol_info const &a) {
+        return a.kind == symbolkind::common ||
+               a.kind == symbolkind::local;
+    }
     static bool by_block_index(symbol_info const &a, symbol_info const &b) {
         if (a.comdat < b.comdat) return true;
         if (a.comdat > b.comdat) return false;
@@ -163,23 +167,18 @@ void generator::generate(std::ostream &out, program const &source) {
 }
 
 void generator::generate_program(program const &prog) const {
-    generate_definitions();
+    generate_machine_definitions();
 
     generate_builtins(prog);
 
-    auto const subprograms = prog.extract_subprograms();
-    if (!subprograms.empty()) {
-        spew("\n");
-        for (auto const *pu : subprograms) {
-            generate_prototype(*pu);
-            spew(";\n");
-        }
-    }
+    generate_prototypes(prog);
 
+    generate_memory(prog);
     generate_common_blocks(prog);
 
     generate_unit(prog);
 
+    auto const subprograms = prog.extract_subprograms();
     for (auto const *pu : subprograms) {
         generate_unit(*pu);
     }
@@ -240,7 +239,7 @@ int main(int argc, const char *argv[]) {{
 
 }
 
-void generator::generate_definitions() const {
+void generator::generate_machine_definitions() const {
     spew("{}", R"(
 #define __STDC_WANT_LIB_EXT1__ 1
 #include <assert.h>
@@ -253,6 +252,7 @@ void generator::generate_definitions() const {
 #include <string.h>
 #include <time.h>
 
+// Definitions for emulating the PDP-10 and its Fortran system.
 typedef int64_t word_t;
 
 // The PDP-10 LOGICAL uses the sign bit for truth.
@@ -320,11 +320,19 @@ bool in_range(word_t index, word_t bound1, word_t bound2) {
     const word_t high = (bound1 < bound2) ? bound2 : bound1;
     return low <= index && index <= high;
 }
+
+// Packs five ASCII characters into a word_t as PDP-10 does.
+word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
+    return
+        (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
+        << 1;
+}
 )");
 
     spew("{}", R"(
+// The input-output subsystem.
 #define IO_MAX_MAPPINGS 4
-#define IO_MAX_UNITS  4
+#define IO_MAX_UNITS 4
 struct iocontext {
     const char *mappings[IO_MAX_MAPPINGS];
     FILE *units[IO_MAX_UNITS+1];
@@ -465,10 +473,10 @@ char *io_writeinteger(int width, const word_t *pvar, char *pdst) {
         for (uint64_t x = value; x >= 10; x /= 10) width += 1;
     }
     char *pfinal = pdst + width;
-                        pdst[--width] = '0' + value % 10; value /= 10;
-    while (value > 0) { pdst[--width] = '0' + value % 10; value /= 10; }
-    if (*pvar < 0)    { pdst[--width] = '-'; }
-    while (width > 0) { pdst[--width] = ' '; }
+                                     pdst[--width] = '0' + value % 10; value /= 10;
+    while (value > 0 && width > 0) { pdst[--width] = '0' + value % 10; value /= 10; }
+    if (*pvar < 0 && width > 0)    { pdst[--width] = '-'; }
+    while (width > 0)              { pdst[--width] = ' '; }
     return pfinal;
 }
 
@@ -765,15 +773,6 @@ void kron_override_date(const char *p) {
 }
 )");
 
-    spew("{}", R"(
-// Packs five ASCII characters into a word_t as PDP-10 does.
-word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
-    return
-        (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
-        << 1;
-}
-)");
-
 }
 
 void generator::generate_builtins(program const &prog) const {
@@ -812,8 +811,19 @@ void generator::generate_builtins(program const &prog) const {
         }
     }
 
-    // In theory, we could provide error messages here if there's anything left
+    // In theory, we could provide an error message if there was anything left
     // in `undefined_subs`. Unfortunately, that includes statement functions.
+}
+
+void generator::generate_prototypes(program const &prog) const {
+    auto const subprograms = prog.extract_subprograms();
+    if (subprograms.empty()) return;
+
+    spew("\n// Function prototypes for the program's subprograms\n");
+    for (auto const *pu : subprograms) {
+        generate_function_signature(*pu);
+        spew(";\n");
+    }
 }
 
 void generator::generate_common_blocks(program const &prog) const {
@@ -833,7 +843,7 @@ void generator::generate_common_blocks(program const &prog) const {
     if (size > 0) spew("word_t common{}[{}];\n", block, size);
 }
 
-void generator::generate_prototype(unit const &u) const {
+void generator::generate_function_signature(unit const &u) const {
     auto const retval = u.extract_symbols(is_return_value);
     if (retval.empty()) {
         spew("void sub{}(", u.unit_name());
@@ -849,10 +859,28 @@ void generator::generate_prototype(unit const &u) const {
     spew(")");
 }
 
+void generator::generate_memory(program const &prog) const {
+    auto memory_size = machine_word_t{0};
+    auto const variables = prog.extract_symbols(is_variable, by_block_index);
+    for (auto const &variable : variables) {
+        memory_size += array_size(variable.shape);
+    }
+    auto const subprograms = prog.extract_subprograms();
+    for (auto const &sub : subprograms) {
+        auto const subvariables =
+            sub->extract_symbols(is_variable, by_block_index);
+        for (auto const &variable : subvariables) {
+            memory_size += array_size(variable.shape);
+        }
+    }
+    spew("\n// TODO:  Use this as the program's \"core memory\".\n");
+    spew("static word_t memory[{}];\n", memory_size);
+}
+
 void generator::generate_unit(unit const &u) const {
     if (u.code().empty()) return;
     spew("\n");
-    generate_prototype(u);
+    generate_function_signature(u);
     spew(" {{\n");
 
     auto const retval = u.extract_symbols(is_return_value); 
@@ -935,7 +963,6 @@ void generator::generate_variable_definition(symbol_info const &variable) const 
 
 void generator::generate_array_definition(symbol_info const &array) const {
     // Locals are now `static`, so we don't need to explicitly zero them.
-    if (!array.referenced) return;
     spew(" static word_t {}[{}]", name(array), array_size(array.shape));
     if (!array.init_data.empty()) {
         spew(" = {{{}", array.init_data[0]);
@@ -955,5 +982,22 @@ void generator::generate_scalar_definition(symbol_info const &scalar) const {
     }
     spew(";\n");
 }
+
+#if 0
+void generator::lay_out_memory(program const &prog) {
+    auto const commons = prog.extract_symbols(is_common, by_block_index);
+    auto block = symbol_name{};
+    auto size = std::size_t{0};
+    for (auto const &var : commons) {
+        if (var.comdat != block) {
+            if (size > 0) spew("word_t common{}[{}];\n", block, size);
+            block = var.comdat;
+            size = 0;
+        }
+        size += is_array(var) ? array_size(var.shape) : 1;
+    }
+    if (size > 0) spew("word_t common{}[{}];\n", block, size);
+}
+#endif
 
 }
