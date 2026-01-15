@@ -10,27 +10,29 @@ namespace aid::fortran {
 unit::~unit() {}
 
 void unit::update_symbol(symbol_info const &symbol) {
+    assert(symbol.kind != symbolkind::fsparam);
     m_symbols.update(symbol);
 }
 
 void unit::update_symbol(symbol_info &&symbol) {
+    assert(symbol.kind != symbolkind::fsparam);
     m_symbols.update(std::move(symbol));
 }
 
-void unit::add_fake_symbol(symbol_name const &name) {
-    if (m_symbols.has(name)) return;  // don't shadow a real symbol
-    auto fake = m_symbols.get(name);
-    fake.type = implicit_type(name);
-    fake.kind = symbolkind::fake;
-    m_symbols.update(fake);
+void unit::add_fsparams(std::span<const symbol_name> names) {
+    assert(m_shadows.empty());
+    auto symbol = m_shadows.get(symbol_name{""});
+    symbol.kind = symbolkind::fsparam;
+    for (auto const &name : names) {
+        symbol.type = implicit_type(name);
+        symbol.name = name;
+        m_shadows.update(symbol);
+    }
 }
 
-void unit::remove_fake_symbol(symbol_name const &name) {
-    auto const fake = m_symbols.get(name);
-    if (fake.kind != symbolkind::fake) return;
-    m_symbols.remove(name);
+void unit::remove_fsparams() {
+    m_shadows.clear();
 }
-
 
 void unit::mark_symbol_referenced(symbol_name const &name) {
     auto const i = m_symbols.find(name);
@@ -57,10 +59,12 @@ void unit::set_implicit_type(char prefix, datatype type) {
 }
 
 bool unit::has_symbol(symbol_name const &name) const {
-    return m_symbols.has(name);
+    return m_shadows.has(name) || m_symbols.has(name);
 }
 
 symbol_info unit::find_symbol(symbol_name const &name) const {
+    auto i = m_shadows.find(name);
+    if (i != symbol_table::npos) return m_shadows[i];
     return m_symbols.get(name);
 }
 

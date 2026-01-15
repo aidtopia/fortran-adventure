@@ -186,6 +186,9 @@ class parser {
         expected<expression_t> parse_atom();
 
         // Parsing helpers
+        expected<expression_t> parse_statement_function_expression(
+            parameter_list_t const &params
+        );
         array_shape parse_array_shape();
         expected<dimension> parse_one_dimension();
         expected<io_list_t> parse_io_list();

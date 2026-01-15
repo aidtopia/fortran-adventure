@@ -10,6 +10,7 @@
 #include <iostream>
 #include <map>
 #include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -36,10 +37,10 @@ class unit {
         void update_symbol(symbol_info const &symbol);
         void update_symbol(symbol_info &&symbol);
 
-        // Statement function definitions need to temporarily add placeholders
-        // for parameters.
-        void add_fake_symbol(symbol_name const &name);
-        void remove_fake_symbol(symbol_name const &name);
+        // Statement function definition parameters are temporary symbols that
+        // might shadow an actual symbol in the unit.
+        void add_fsparams(std::span<const symbol_name> names);
+        void remove_fsparams();
 
         // A shortcut for ensuring the symbol's `referenced` flag is set.
         void mark_symbol_referenced(symbol_name const &name);
@@ -107,6 +108,7 @@ class unit {
 
         symbol_name  m_unit_name;
         symbol_table m_symbols;
+        symbol_table m_shadows;  // temporary symbols that might shadow others
         // We store info about the common blocks (comdats) separately from the
         // symbols because they're in distinct name spaces.
         comdat_table m_comdats;

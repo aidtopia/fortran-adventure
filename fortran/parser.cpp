@@ -344,16 +344,8 @@ parser::parse_statement_function_definition(symbol_name const &name) {
     if (!accept('=')) {
         return error("expected '=' in statement function definition");
     }
-    // We temporarily add the parameters as "fake" symbols so that we can parse
-    // the defining expression without accidentally creating local variables in
-    // the current unit.
-    for (auto const &parameter : parameters.value()) {
-        m_current_unit->add_fake_symbol(parameter);
-    }
-    auto const definition = parse_expression();
-    for (auto const &parameter : parameters.value()) {
-        m_current_unit->remove_fake_symbol(parameter);
-    }
+    auto const definition =
+        parse_statement_function_expression(parameters.value());
     if (!definition.has_value()) return error(definition.error());
     if (!at_eol()) {
         return error("unexpected token after statement function definition");
@@ -1080,6 +1072,17 @@ parser::expected<expression_t> parser::parse_atom() {
     auto const constant = parse_constant();
     if (!constant.has_value()) return error(constant.error());
     return std::make_shared<constant_node>(constant.value().value);
+}
+
+parser::expected<expression_t> parser::parse_statement_function_expression(
+    parameter_list_t const &params
+) {
+    // The parameter names are in scope only briefly, so we have a special way
+    // to add them to the unit's symbols temporarily.
+    m_current_unit->add_fsparams(params);
+    auto const definition = parse_expression();
+    m_current_unit->remove_fsparams();
+    return definition;
 }
 
 array_shape parser::parse_array_shape() {

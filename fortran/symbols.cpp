@@ -42,12 +42,6 @@ std::size_t symbol_table::update(symbol_info &&symbol) {
     return i;
 }
 
-void symbol_table::remove(symbol_name const &name) {
-    auto const it = m_index.find(name);
-    if (it == m_index.end()) return;
-    m_index.erase(it);
-}
-
 std::vector<std::size_t> symbol_table::indices_sorted_by_name() const {
     std::vector<std::size_t> indices;
     for (auto const &entry : m_index) { indices.push_back(entry.second); }
