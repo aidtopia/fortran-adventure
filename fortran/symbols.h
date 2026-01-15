@@ -34,7 +34,8 @@ enum class symbolkind {
     retval,     // a local variable for the return value of the function
     subprogram, // a subroutine or function (or statement function)
     external,   // a subprogram that's passed as arg to another
-    label       // a statement number
+    label,      // a statement number
+    fake        // a placeholder for a parameter in a function statement
 };
 
 struct dimension {
@@ -140,6 +141,9 @@ class symbol_table {
         std::size_t update(symbol_info const &symbol);
         std::size_t update(symbol_info &&symbol);
 
+        // Removes a "fake" symbol.
+        void remove(symbol_name const &name);
+
         // Retrieves a symbol by its index.  UB if `i` is out of bounds.
         symbol_info const &operator[](std::size_t i) const { return m_symbols[i]; }
         symbol_info       &operator[](std::size_t i)       { return m_symbols[i]; }
@@ -153,14 +157,6 @@ class symbol_table {
         std::size_t find(symbol_name const &name) const noexcept {
             auto const it = m_index.find(name);
             return (it != m_index.end()) ? it->second : npos;
-        }
-
-        // Retrieves a symbol by its name.  Throws if it's not in the table.
-        symbol_info const &look_up(symbol_name const &name) const {
-            return m_symbols.at(find(name));
-        }
-        symbol_info       &look_up(symbol_name const &name)       {
-            return m_symbols.at(find(name));
         }
 
         // Returns the number of entries in the table.
@@ -222,6 +218,7 @@ struct std::formatter<aid::fortran::symbolkind> :
             case subprogram:    return "subprogram";
             case external:      return "external";
             case label:         return "label";
+            case fake:          return "fake";
             default:            return "* update symbolkind formatter *";
         }
     }

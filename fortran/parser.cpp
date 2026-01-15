@@ -344,7 +344,16 @@ parser::parse_statement_function_definition(symbol_name const &name) {
     if (!accept('=')) {
         return error("expected '=' in statement function definition");
     }
+    // We temporarily add the parameters as "fake" symbols so that we can parse
+    // the defining expression without accidentally creating local variables in
+    // the current unit.
+    for (auto const &parameter : parameters.value()) {
+        m_current_unit->add_fake_symbol(parameter);
+    }
     auto const definition = parse_expression();
+    for (auto const &parameter : parameters.value()) {
+        m_current_unit->remove_fake_symbol(parameter);
+    }
     if (!definition.has_value()) return error(definition.error());
     if (!at_eol()) {
         return error("unexpected token after statement function definition");

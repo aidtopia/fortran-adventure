@@ -17,10 +17,24 @@ void unit::update_symbol(symbol_info &&symbol) {
     m_symbols.update(std::move(symbol));
 }
 
+void unit::add_fake_symbol(symbol_name const &name) {
+    if (m_symbols.has(name)) return;  // don't shadow a real symbol
+    auto fake = m_symbols.get(name);
+    fake.type = implicit_type(name);
+    fake.kind = symbolkind::fake;
+    m_symbols.update(fake);
+}
+
+void unit::remove_fake_symbol(symbol_name const &name) {
+    auto const fake = m_symbols.get(name);
+    if (fake.kind != symbolkind::fake) return;
+    m_symbols.remove(name);
+}
+
+
 void unit::mark_symbol_referenced(symbol_name const &name) {
     auto const i = m_symbols.find(name);
-    assert(i != symbol_table::npos);
-    m_symbols[i].referenced = true;
+    if (i != symbol_table::npos) m_symbols[i].referenced = true;
 }
 
 void unit::infer_types() {

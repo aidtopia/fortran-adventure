@@ -36,6 +36,11 @@ class unit {
         void update_symbol(symbol_info const &symbol);
         void update_symbol(symbol_info &&symbol);
 
+        // Statement function definitions need to temporarily add placeholders
+        // for parameters.
+        void add_fake_symbol(symbol_name const &name);
+        void remove_fake_symbol(symbol_name const &name);
+
         // A shortcut for ensuring the symbol's `referenced` flag is set.
         void mark_symbol_referenced(symbol_name const &name);
 
