@@ -14,22 +14,22 @@ class generator {
     public:
         static void generate(std::ostream &out, program const &prog);
 
-        generator(std::ostream &out) :
-            m_out(out) {}
+        generator(std::ostream &out) : m_out(out) {}
 
     private:
+        using core_addr = machine_word_t;
         void generate_program(program const &prog) const;
         void generate_machine_definitions() const;
         void generate_builtins(program const &prog) const;
         void generate_prototypes(program const &prog) const;
-        void generate_common_blocks(program const &prog) const;
+        core_addr generate_memory(program const &prog) const;
+        void generate_common_blocks(program const &prog, core_addr &addr) const;
+        void generate_common_block(symbol_name const &block, core_addr size, core_addr &addr) const;
+        void generate_unit(unit const &u, core_addr &addr) const;
         void generate_function_signature(unit const &u) const;
-        void generate_memory(program const &prog) const;
-        void generate_unit(unit const &u) const;
-        void generate_variable_definition(symbol_info const &var) const;
-        void generate_array_definition(symbol_info const &array) const;
-        void generate_scalar_definition(symbol_info const &scalar) const;
-        void lay_out_memory(program const &prog);
+        void generate_variable_definition(symbol_info const &var, core_addr &addr) const;
+        void generate_array_definition(symbol_info const &array, core_addr &addr) const;
+        void generate_scalar_definition(symbol_info const &scalar, core_addr &addr) const;
 
         template <typename... Args>
         void spew(std::format_string<Args...> fmt, Args && ... args) const {

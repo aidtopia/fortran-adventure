@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cctype>
 #include <format>
 #include <fstream>
@@ -34,10 +35,6 @@ namespace {
     }
     static bool is_referenced_subprogram(symbol_info const &a) {
         return a.kind == symbolkind::subprogram && a.referenced;
-    }
-    static bool is_variable(symbol_info const &a) {
-        return a.kind == symbolkind::common ||
-               a.kind == symbolkind::local;
     }
     static bool by_block_index(symbol_info const &a, symbol_info const &b) {
         if (a.comdat < b.comdat) return true;
@@ -168,20 +165,23 @@ void generator::generate(std::ostream &out, program const &source) {
 
 void generator::generate_program(program const &prog) const {
     generate_machine_definitions();
-
     generate_builtins(prog);
-
     generate_prototypes(prog);
 
-    generate_memory(prog);
-    generate_common_blocks(prog);
+    // addr contains the next available address in the program's memory.
+    auto addr = core_addr{0};
+    auto const core_size = generate_memory(prog);
 
-    generate_unit(prog);
+    generate_common_blocks(prog, addr);
+
+    generate_unit(prog, addr);
 
     auto const subprograms = prog.extract_subprograms();
     for (auto const *pu : subprograms) {
-        generate_unit(*pu);
+        generate_unit(*pu, addr);
     }
+
+    assert(addr <= core_size);
 
     spew("{}", R"(
 void usage() {
@@ -826,7 +826,49 @@ void generator::generate_prototypes(program const &prog) const {
     }
 }
 
-void generator::generate_common_blocks(program const &prog) const {
+generator::core_addr generator::generate_memory(program const &prog) const {
+    auto memory_size = core_addr{0};
+
+    // Core memory must contain all of the common blocks, all the local
+    // locals from each subprogram, and maybe the return value slots for
+    // subprograms that return a value.
+
+    // Since we're just computing the required size, we don't bother sorting
+    // the extracted symbols.
+
+    // We pull commons only from the main program, otherwise we'd end up
+    // double-counting.
+    auto const commons = prog.extract_symbols(is_common);
+    for (auto const &common : commons) {
+        memory_size += array_size(common.shape);
+    }
+
+    auto const locals = prog.extract_symbols(is_local);
+    for (auto const &variable : locals) {
+        memory_size += array_size(variable.shape);
+    }
+    auto const retvals = prog.extract_symbols(is_return_value);
+    for (auto const &retval : retvals) {
+        memory_size += array_size(retval.shape);
+    }
+
+    auto const subprograms = prog.extract_subprograms();
+    for (auto const &sub : subprograms) {
+        auto const sublocals = sub->extract_symbols(is_local);
+        for (auto const &variable : sublocals) {
+            memory_size += array_size(variable.shape);
+        }
+        auto const subretvals = sub->extract_symbols(is_return_value);
+        for (auto const &retval : subretvals) {
+            memory_size += array_size(retval.shape);
+        }
+    }
+
+    spew("static word_t memory[{}];\n", memory_size);
+    return memory_size;
+}
+
+void generator::generate_common_blocks(program const &prog, core_addr &addr) const {
     auto const commons = prog.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return;
     spew("\n// Common Blocks\n");
@@ -834,58 +876,39 @@ void generator::generate_common_blocks(program const &prog) const {
     auto size = std::size_t{0};
     for (auto const &var : commons) {
         if (var.comdat != block) {
-            if (size > 0) spew("word_t common{}[{}];\n", block, size);
+            generate_common_block(block, size, addr);
             block = var.comdat;
             size = 0;
         }
-        size += is_array(var) ? array_size(var.shape) : 1;
+        size += array_size(var.shape);
     }
-    if (size > 0) spew("word_t common{}[{}];\n", block, size);
+    generate_common_block(block, size, addr);
 }
 
-void generator::generate_function_signature(unit const &u) const {
-    auto const retval = u.extract_symbols(is_return_value);
-    if (retval.empty()) {
-        spew("void sub{}(", u.unit_name());
-    } else {
-        spew("word_t fn{}(", u.unit_name());
+void generator::generate_common_block(
+    symbol_name const &block,
+    core_addr size,
+    core_addr &addr
+) const {
+    if (size > 0) {
+        spew("word_t * const common{} = &memory[{}]; // [{}];\n",
+             block, addr, size);
+        addr += size;
     }
-    auto const parameters = u.extract_symbols(is_argument, by_index);
-    for (auto const &param : parameters) {
-        if (is_return_value(param)) continue;
-        if (param.index > 1) spew(", ");
-        spew("word_t *{}", name(param));
-    }
-    spew(")");
 }
 
-void generator::generate_memory(program const &prog) const {
-    auto memory_size = machine_word_t{0};
-    auto const variables = prog.extract_symbols(is_variable, by_block_index);
-    for (auto const &variable : variables) {
-        memory_size += array_size(variable.shape);
-    }
-    auto const subprograms = prog.extract_subprograms();
-    for (auto const &sub : subprograms) {
-        auto const subvariables =
-            sub->extract_symbols(is_variable, by_block_index);
-        for (auto const &variable : subvariables) {
-            memory_size += array_size(variable.shape);
-        }
-    }
-    spew("\n// TODO:  Use this as the program's \"core memory\".\n");
-    spew("static word_t memory[{}];\n", memory_size);
-}
-
-void generator::generate_unit(unit const &u) const {
+void generator::generate_unit(unit const &u, core_addr &addr) const {
     if (u.code().empty()) return;
     spew("\n");
     generate_function_signature(u);
     spew(" {{\n");
 
-    auto const retval = u.extract_symbols(is_return_value); 
-    if (!retval.empty()) {
-        spew(" static word_t {}[1];  // return value\n", name(retval.front()));
+    auto const retvals = u.extract_symbols(is_return_value); 
+    if (!retvals.empty()) {
+        auto const &retval = retvals.front();
+        spew(" word_t *{} = &memory[{}];  // return value\n",
+            name(retval), addr);
+        addr += array_size(retval.shape);
     }
 
     // Avoid compiler warnings for unused parameters.
@@ -896,12 +919,13 @@ void generator::generate_unit(unit const &u) const {
 
     auto const commons = u.extract_symbols(is_common, by_block_index);
     auto block = symbol_name{};
-    auto offset = std::size_t{0};
+    auto offset = core_addr{0};
     for (auto const &common : commons) {
         if (common.comdat != block) offset = 0;
         block = common.comdat;
         if (common.referenced) {
-            spew(" word_t *{} = &common{}[{}];\n", name(common), block, offset);
+            spew(" word_t * const {} = &common{}[{}];\n",
+                name(common), block, offset);
             // Since the common variable is a reference into the common block,
             // we cannot initialize it in the declaration.
             for (std::size_t i = 0; i < common.init_data.size(); ++i) {
@@ -909,12 +933,12 @@ void generator::generate_unit(unit const &u) const {
             }
         }
         // Its size still matters to the layout, even if it wasn't referenced.
-        offset += is_array(common) ? array_size(common.shape) : 1;
+        offset += array_size(common.shape);
     }
 
     auto const locals = u.extract_symbols(is_local);
     for (auto const &local : locals) {
-        generate_variable_definition(local);
+        generate_variable_definition(local, addr);
     }
 
     for (auto const format : u.formats()) {
@@ -936,8 +960,8 @@ void generator::generate_unit(unit const &u) const {
     auto const return_label = u.find_symbol(symbol_name{"return"});
     if (return_label.referenced) {
         spew(" L{}: ", return_label.name);
-        if (retval.empty()) spew("return;\n");
-        else                spew("return *{};\n", name(retval.front()));
+        if (retvals.empty()) spew("return;\n");
+        else                 spew("return *{};\n", name(retvals .front()));
     }
     auto const stop_label   = u.find_symbol(symbol_name{"stop"});
 
@@ -952,52 +976,61 @@ void generator::generate_unit(unit const &u) const {
     spew("}}\n");
 }
 
-void generator::generate_variable_definition(symbol_info const &variable) const {
+void generator::generate_function_signature(unit const &u) const {
+    auto const retval = u.extract_symbols(is_return_value);
+    if (retval.empty()) {
+        spew("void sub{}(", u.unit_name());
+    } else {
+        spew("word_t fn{}(", u.unit_name());
+    }
+    auto const parameters = u.extract_symbols(is_argument, by_index);
+    for (auto const &param : parameters) {
+        if (is_return_value(param)) continue;
+        if (param.index > 1) spew(", ");
+        spew("word_t *{}", name(param));
+    }
+    spew(")");
+}
+
+void generator::generate_variable_definition(symbol_info const &variable, core_addr &addr) const {
     if (!variable.referenced) return;
     if (is_array(variable)) {
-        generate_array_definition(variable);
+        generate_array_definition(variable, addr);
     } else {
-        generate_scalar_definition(variable);
+        generate_scalar_definition(variable, addr);
     }
 }
 
-void generator::generate_array_definition(symbol_info const &array) const {
-    // Locals are now `static`, so we don't need to explicitly zero them.
-    spew(" static word_t {}[{}]", name(array), array_size(array.shape));
+void generator::generate_array_definition(symbol_info const &array, core_addr &addr) const {
+    auto const size = array_size(array.shape);
     if (!array.init_data.empty()) {
-        spew(" = {{{}", array.init_data[0]);
-        for (std::size_t i = 1; i < array.init_data.size(); ++i) {
-            spew(",{}", array.init_data[i]);
+        spew(" static word_t {}[{}]", name(array), size);
+        if (!array.init_data.empty()) {
+            spew(" = {{{}", array.init_data[0]);
+            for (std::size_t i = 1; i < array.init_data.size(); ++i) {
+                spew(",{}", array.init_data[i]);
+            }
+            spew("}}");
         }
-        spew("}}");
+        spew("; // TODO: This needs to be in core memory!\n");
+    } else {
+        spew(" word_t * const {} = &memory[{}]; // [{}]\n",
+            name(array), addr, size);
+        addr += size;
     }
-    spew(";\n");
 }
 
-void generator::generate_scalar_definition(symbol_info const &scalar) const {
-    // Locals are now `static`, so we don't need to explicitly zero them.
-    spew(" static word_t {}[1]", name(scalar));
+void generator::generate_scalar_definition(symbol_info const &scalar, core_addr &addr) const {
     if (!scalar.init_data.empty()) {
-        spew(" = {{{}}}", scalar.init_data[0]);
-    }
-    spew(";\n");
-}
-
-#if 0
-void generator::lay_out_memory(program const &prog) {
-    auto const commons = prog.extract_symbols(is_common, by_block_index);
-    auto block = symbol_name{};
-    auto size = std::size_t{0};
-    for (auto const &var : commons) {
-        if (var.comdat != block) {
-            if (size > 0) spew("word_t common{}[{}];\n", block, size);
-            block = var.comdat;
-            size = 0;
+        spew(" static word_t {}[1]", name(scalar));
+        if (!scalar.init_data.empty()) {
+            spew(" = {{{}}}", scalar.init_data[0]);
         }
-        size += is_array(var) ? array_size(var.shape) : 1;
+        spew("; // TODO: This needs to be in core memory!\n");
+    } else {
+        spew(" word_t * const {} = &memory[{}];\n", name(scalar), addr);
+        addr += 1;
     }
-    if (size > 0) spew("word_t common{}[{}];\n", block, size);
 }
-#endif
 
 }
