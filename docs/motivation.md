@@ -20,7 +20,7 @@ I wanted to play the game as it was when I first played it.
 
 My theory is that mechanical translation is more likely than a manual translation to produce program that behaves identically to the original.
 
-So rather than attempt yet another port (and thus inject my own bugs), I set out to write <strike>an interpreter</strike> _a translator_ for the minimal subset of Fortran IV necessary to run the Adventure from the original unaltered source code and data file. (See Note 2.)
+So rather than attempt yet another port (and thus inject my own bugs), I set out to write <del>an interpreter</del> <ins>a translator</ins> for the minimal subset of Fortran IV necessary to run Adventure from the original unaltered source code and data file. (See Note 2.)
 
 And that meant I had to face with hazards of the aforementioned peculiar features.
 

@@ -13,6 +13,8 @@ cd fortran-adventure
 
 Choose your own path: [Windows with Visual Studio](#windows-with-visual-studio) or [Another system](#another-system).
 
+- - -
+
 #### Windows with Visual Studio
 
 Start a [VS Developer Command Prompt](https://learn.microsoft.com/en-us/visualstudio/ide/reference/command-prompt-powershell?view=vs-2022).  A Developer Command Prompt is just a regular command prompt with PATH and other environment environment variables set to access the compilers and tools that come with Visual Studio.
@@ -29,11 +31,15 @@ start fortran\fortran.sln
 msbuild fortran\fortran.sln -p:Configuration=Release
 ```
 
+- - -
+
 #### Another system
 
 If you use another toolchain, like clang or gcc, you'll have to cobble together a script or makefile to compile and link all of the C++ files in the `fortran` subdirectory.
 
 **NOTE:**  The translator uses some features from C++23.  For gcc and clang, make sure you're using a fairly recent version and specify `-std:c++23` among the options on the compiler command line.
+
+- - -
 
 ### 3. Get the Adventure code
 
@@ -92,14 +98,14 @@ If you've followed this example, the program should begin and you can skip to [s
 
 If, however, you're working with a different version of Adventure, the program might say it was unable to open the data file and then exit.  For example, if you were using WOOD0350v**1**, you'd see:
 
-```
-INITIALISING...
-The program failed to open a file named "TEXT".
-You can restart the program with a file name mapping using the
-command line option -f, like this:
-
-    -fTEXT=<path>
-```
+> ```
+> INITIALISING...
+> The program failed to open a file named "TEXT".
+> You can restart the program with a file name mapping using the
+> command line option -f, like this:
+> 
+>     -fTEXT=<path>
+> ```
 
 In this case, you'd run it again like this:
 
@@ -111,23 +117,23 @@ target\ADVEN.exe -fTEXT=adven.dat
 
 You should see messages about initialization and loading the data file, followed by `INIT DONE`.
 
-```
-INITIALIZING...
-TABLE SPACE USED:
-  9616 OF   9650 WORDS OF MESSAGES
-   742 OF    750 TRAVEL OPTIONS
-   296 OF    300 VOCABULARY WORDS
-   140 OF    150 LOCATIONS
-    53 OF    100 OBJECTS
-    31 OF     35 ACTION VERBS
-   201 OF    205 RTEXT MESSAGES
-    10 OF     12 CLASS MESSAGES
-     9 OF     20 HINTS
-    32 OF     35 MAGIC MESSAGES
-
-
-INIT DONE
-```
+> ```
+> INITIALIZING...
+> TABLE SPACE USED:
+>   9616 OF   9650 WORDS OF MESSAGES
+>    742 OF    750 TRAVEL OPTIONS
+>    296 OF    300 VOCABULARY WORDS
+>    140 OF    150 LOCATIONS
+>     53 OF    100 OBJECTS
+>     31 OF     35 ACTION VERBS
+>    201 OF    205 RTEXT MESSAGES
+>     10 OF     12 CLASS MESSAGES
+>      9 OF     20 HINTS
+>     32 OF     35 MAGIC MESSAGES
+> 
+> 
+> INIT DONE
+> ```
 
 At this point, the program is paused, for reasons that made sense when you were using a PDP-10 in the 1970s.  Type `G` (for go) or `X` (for exit) and press return (a.k.a., enter).
 
@@ -139,52 +145,20 @@ G
 
 If you start Adventure during business hours, you may be told that the cave is closed.
 
-```
-I'M TERRIBLY SORRY, BUT COLOSSAL CAVE IS CLOSED.  OUR HOURS ARE:
+> ```
+> I'M TERRIBLY SORRY, BUT COLOSSAL CAVE IS CLOSED.  OUR HOURS ARE:
+> 
+>          MON - FRI:   0:00 TO  8:00
+>                      18:00 TO 24:00
+>          SAT - SUN:  OPEN ALL DAY
+>          HOLIDAYS:   OPEN ALL DAY
+> ```
 
-         MON - FRI:   0:00 TO  8:00
-                     18:00 TO 24:00
-         SAT - SUN:  OPEN ALL DAY
-         HOLIDAYS:   OPEN ALL DAY
-```
+Most novice adventurers will want to use the [time travel option](#time-travel-option).
 
-You can bypass this by telling Adventure that [you're a wizard](#wizard-option).  But you'll be challenged to prove it.
+If time travel feels like cheating, you'll have to [prove you're a wizard](#wizard-option).
 
-Novice adventurers may prefer the [time travel option](#time-travel-option).
-
-#### Wizard Option
-
-The wizard.xlsx Excel spreadsheet in the `tools` directory has a synopsis of the answers you must give and it will compute the necessary response to the final challenge.
-
-In the following examples, the user's responses are in lowercase.
-
-```
-ONLY WIZARDS ARE PERMITTED WITHIN THE CAVE RIGHT NOW.
-
-ARE YOU A WIZARD?
-
-yes
-
-PROVE IT!  SAY THE MAGIC WORD!
-
-dwarf
-
-THAT IS NOT WHAT I THOUGHT IT WAS.  DO YOU KNOW WHAT I THOUGHT IT WAS?
-
-no
-
-IFXOU
-```
-
-In the above example, the `IFXOU` is a randomly selected challenge word.  The user must apply an algorithm to the challenge word to generate the correct response word.  The spreadsheet does the work for you.
-
-![wizard spreadsheet in action](wizard_challenge.png)
-
-```
-dsphm
-
-OH DEAR, YOU REALLY *ARE* A WIZARD!  SORRY TO HAVE BOTHERED YOU . . .
-```
+- - -
 
 #### Time Travel Option
 
@@ -201,20 +175,60 @@ There are several advantages to this approach:
 * It simplifies the wizard challenge if you choose to try out the administrator options.
 * It seeds the random number generator consistently.
 
+- - -
+
+#### Wizard Option
+
+The wizard.xlsx Excel spreadsheet in the `tools` directory has a synopsis of the answers you must give and it will compute the necessary response to the final challenge.
+
+In the following examples, the user's responses are in lowercase.
+
+> ```
+> ONLY WIZARDS ARE PERMITTED WITHIN THE CAVE RIGHT NOW.
+> 
+> ARE YOU A WIZARD?
+> 
+> yes
+> 
+> PROVE IT!  SAY THE MAGIC WORD!
+> 
+> dwarf
+> 
+> THAT IS NOT WHAT I THOUGHT IT WAS.  DO YOU KNOW WHAT I THOUGHT IT WAS?
+> 
+> no
+> 
+> IFXOU
+> ```
+
+In the above example, the `IFXOU` is a randomly selected challenge word.  The user must apply an algorithm to the challenge word to generate the correct response word.  The spreadsheet does the work for you.
+
+![wizard spreadsheet in action](wizard_challenge.png)
+
+> ```
+> dsphm
+> 
+> OH DEAR, YOU REALLY *ARE* A WIZARD!  SORRY TO HAVE BOTHERED YOU . . .
+> ```
+
+By the way, the `11111` shown under `MAGNUM` is the default "magic number" coded into the program.  If you ever manage to change that number (not currently possible without changing the source code), you just have to put the new magic number in that spot on the spreadsheet.
+
+- - -
+
 ### 10. Welcome to Adventure!!
 
 Be aware that it is not yet possible to save your game state.  I'm working on that.  In the meantime, don't blame me if a dwarf knifes you.
 
-```
-WELCOME TO ADVENTURE!!  WOULD YOU LIKE INSTRUCTIONS?
-
-no
-
-YOU ARE STANDING AT THE END OF A ROAD BEFORE A SMALL BRICK BUILDING.
-AROUND YOU IS A FOREST.  A SMALL STREAM FLOWS OUT OF THE BUILDING AND
-DOWN A GULLY.
-
-enter building
-
-YOU ARE INSIDE A BUILDING, A WELL HOUSE FOR A LARGE SPRING.
-```
+> ```
+> WELCOME TO ADVENTURE!!  WOULD YOU LIKE INSTRUCTIONS?
+> 
+> no
+> 
+> YOU ARE STANDING AT THE END OF A ROAD BEFORE A SMALL BRICK BUILDING.
+> AROUND YOU IS A FOREST.  A SMALL STREAM FLOWS OUT OF THE BUILDING AND
+> DOWN A GULLY.
+> 
+> enter building
+> 
+> YOU ARE INSIDE A BUILDING, A WELL HOUSE FOR A LARGE SPRING.
+> ```
