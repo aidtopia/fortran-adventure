@@ -19,13 +19,18 @@ class c_generator {
         c_generator() : m_memsize{0}, m_init_data{} {}
 
     private:
+        using init_data_t = std::vector<machine_word_t>;
+
         std::string generate_program(program const &prog);
         std::string generate_builtins(program const &prog);
         std::string generate_prototypes(program const &prog);
         std::string generate_common_blocks(program const &prog);
-        std::string generate_common_block(symbol_name const &block, machine_word_t size);
-        std::string generate_subprograms(program const &prog);
+        std::string generate_common_block(
+            symbol_name const &block,
+            machine_word_t size
+        );
         std::string generate_main_function(program const &prog);
+        std::string generate_subprograms(program const &prog);
         std::string generate_static_initialization();
 
         std::string generate_unit(unit const &u);
@@ -38,19 +43,24 @@ class c_generator {
         std::string generate_format_specifications(unit const &u);
         std::string generate_return_statement(unit const &u);
 
-        std::string generate_variable_definition(symbol_info const &var);
-        std::string generate_array_definition(symbol_info const &array);
-        std::string generate_scalar_definition(symbol_info const &scalar);
+        std::string generate_variable_definition(
+            symbol_info const &var,
+            machine_word_t offset
+        );
+        std::string generate_array_definition(
+            symbol_info const &var,
+            machine_word_t offset
+        );
+        std::string generate_scalar_definition(
+            symbol_info const &var,
+            machine_word_t offset
+        );
 
-        using init_data_t = std::vector<machine_word_t>;
         void add_initializer(
             symbol_name block,
             machine_word_t offset,
             init_data_t data
         );
-        void add_initializer(machine_word_t address, init_data_t const &data) {
-            add_initializer(symbol_name{}, address, data);
-        }
 
         // The runtime support consists of static text.
         static constexpr std::string_view machine_definitions();

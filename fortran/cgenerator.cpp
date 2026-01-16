@@ -27,11 +27,11 @@ namespace {
     static bool is_common(symbol_info const &a) {
         return a.kind == symbolkind::common;
     }
-    static bool is_local(symbol_info const &a) {
-        return a.kind == symbolkind::local;
-    }
     static bool is_return_value(symbol_info const &a) {
         return a.kind == symbolkind::retval;
+    }
+    static bool is_referenced_local(symbol_info const &a) {
+        return a.kind == symbolkind::local && a.referenced;
     }
     static bool is_referenced_subprogram(symbol_info const &a) {
         return a.kind == symbolkind::subprogram && a.referenced;
@@ -61,7 +61,13 @@ namespace {
         }
         return std::format("v{}", sym.name);
     }
-
+    static std::string base(symbol_name const &block) {
+        return block.empty() ? std::string{"memory"}
+                             : std::format("common{}", block);
+    }
+    static std::string base(symbol_info const &sym) {
+        return base(sym.comdat);
+    }
     static std::string macro_defined(std::string_view c_stmt) {
         auto constexpr directive = std::string_view("#define ");
         if (!c_stmt.starts_with(directive)) return {};
@@ -187,41 +193,6 @@ std::string c_generator::generate_program(program const &prog) {
         init_function, usage_function(), main_function);
 }
 
-std::string c_generator::generate_main_function(program const &prog) {
-    return std::format(R"(
-int main(int argc, const char *argv[]) {{
-    io_init();
-    kron_init();
-    for (int i = 1; i < argc; ++i) {{
-        const char *arg = argv[i];
-        if (arg == NULL) break;
-        if (arg[0] == '-') {{
-            if (strncmp(arg, "-y2k", 4) == 0) {{
-                kron_set_y2k(arg[4] != '-');
-                continue;
-            }} else if (strncmp(arg, "-CAPS", 5) == 0) {{
-                io_force_caps(arg[5] != '-');
-            }} else switch (arg[1]) {{
-                case 'F': case 'f': io_addmapping(arg+2); continue;
-                case 'T': case 't': kron_override_time(arg+2); continue;
-                case 'D': case 'd': kron_override_date(arg+2); continue;
-                case 'H': case 'h':
-                case '?':           usage(); return 0;
-                default:
-                    fprintf(stderr, "ignoring unrecognized option: %s\n", arg);
-                    break;
-            }}
-        }} else {{
-            fprintf(stderr, "ignoring argument: %s\n", arg);
-        }}
-    }}
-    initialize_static_data();
-    sub{}();
-    return 0;
-}}
-)", prog.unit_name());
-}
-
 std::string c_generator::generate_builtins(program const &prog) {
     auto result = std::string{};
 
@@ -309,6 +280,41 @@ std::string c_generator::generate_common_block(
                        block, addr, size);
 }
 
+std::string c_generator::generate_main_function(program const &prog) {
+    return std::format(R"(
+int main(int argc, const char *argv[]) {{
+    io_init();
+    kron_init();
+    for (int i = 1; i < argc; ++i) {{
+        const char *arg = argv[i];
+        if (arg == NULL) break;
+        if (arg[0] == '-') {{
+            if (strncmp(arg, "-y2k", 4) == 0) {{
+                kron_set_y2k(arg[4] != '-');
+                continue;
+            }} else if (strncmp(arg, "-CAPS", 5) == 0) {{
+                io_force_caps(arg[5] != '-');
+            }} else switch (arg[1]) {{
+                case 'F': case 'f': io_addmapping(arg+2); continue;
+                case 'T': case 't': kron_override_time(arg+2); continue;
+                case 'D': case 'd': kron_override_date(arg+2); continue;
+                case 'H': case 'h':
+                case '?':           usage(); return 0;
+                default:
+                    fprintf(stderr, "ignoring unrecognized option: %s\n", arg);
+                    break;
+            }}
+        }} else {{
+            fprintf(stderr, "ignoring argument: %s\n", arg);
+        }}
+    }}
+    initialize_static_data();
+    sub{}();
+    return 0;
+}}
+)", prog.unit_name());
+}
+
 std::string c_generator::generate_subprograms(program const &prog) {
     auto result = std::string{};
     auto const subprograms = prog.extract_subprograms();
@@ -330,21 +336,20 @@ std::string c_generator::generate_static_initialization() {
     auto runs = std::string{};
     auto singletons = std::string{};
     for (auto [block, offset, data] : m_init_data) {
-        auto const base =
-            block.empty() ? std::string{"memory"}
-                          : std::format("common{}", block);
         if (is_run(data)) {
             if (data.front() != 0) {
                 runs +=
                     std::format(
                         " for (i = 0; i < {}; ++i) {}[{}+i] = {};\n",
-                        data.size(), base, offset, data.front());
+                        data.size(), base(block), offset, data.front());
             }
         } else {
             for (auto value : data) {
                 if (value != 0) {
                     singletons +=
-                        std::format(" {}[{}] = {};\n", base, offset, value);
+                        std::format(
+                            " {}[{}] = {};\n",
+                            base(block), offset, value);
                 }
                 ++offset;
             }
@@ -428,8 +433,6 @@ std::string c_generator::generate_dummies(unit const &u) {
 }
 
 std::string c_generator::generate_common_variable_declarations(unit const &u) {
-    // Note that we do NOT update m_memsize here because the space for the
-    // individual common variables was already "allocated" by the comdat block.
     auto const commons = u.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return {};
     auto result = std::string{" // Common variables\n"};
@@ -439,25 +442,24 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
         if (common.comdat != block) offset = 0;
         block = common.comdat;
         if (common.referenced) {
-            result +=
-                std::format(" word_t * const {} = &common{}[{}];\n",
-                            name(common), block, offset);
+            result += generate_variable_definition(common, offset);
             add_initializer(block, offset, common.init_data);
         }
         // Its size still matters to the layout, even if it wasn't referenced.
         offset += array_size(common.shape);
-        // Note that we do NOT tally to m_memsize, as those are accounted for
-        // computed the common _blocks_ are computed.
+        // Note that we do NOT bump m_memsize because the space for the common
+        // variables is already accounted for by the comdat blocks.
     }
     return result;
 }
 
 std::string c_generator::generate_local_variable_declarations(unit const &u) {
-    auto const locals = u.extract_symbols(is_local);
+    auto const locals = u.extract_symbols(is_referenced_local);
     if (locals.empty()) return {};
-    auto result = std::string(" // Local variables\n");
+    auto result = std::string{" // Local variables\n"};
     for (auto const &local : locals) {
-        result += generate_variable_definition(local);
+        result += generate_variable_definition(local, m_memsize);
+        add_initializer(local.comdat, m_memsize, local.init_data);
         m_memsize += array_size(local.shape);
     }
     return result;
@@ -497,48 +499,44 @@ std::string c_generator::generate_return_statement(unit const &u) {
 }
 
 std::string c_generator::generate_variable_definition(
-    symbol_info const &variable
+    symbol_info const &variable,
+    machine_word_t offset
 ) {
-    if (!variable.referenced) return {};
     if (is_array(variable)) {
-        return generate_array_definition(variable);
+        return generate_array_definition(variable, offset);
     } else {
-        return generate_scalar_definition(variable);
+        return generate_scalar_definition(variable, offset);
     }
 }
 
-std::string c_generator::generate_array_definition(symbol_info const &array) {
-    auto const size = array_size(array.shape);
-    auto address = m_memsize;
+std::string c_generator::generate_array_definition(symbol_info const &var, machine_word_t offset) {
     auto result =
-        std::format(" word_t * const {} = &memory[{}]; // [{}]",
-                    name(array), address, size);
-    if (!array.init_data.empty()) {
-        add_initializer(address, array.init_data);
-        if (array.init_data.size() <= 3) {
-            result += std::format(" = {{{}", array.init_data[0]);
-            for (auto i = 1uz; i < array.init_data.size(); ++i) {
-                result += std::format(",{}", array.init_data[i]);
+        std::format(" word_t * const {} = &{}[{}]; // [{}]",
+                    name(var), base(var), offset, array_size(var.shape));
+    if (!var.init_data.empty()) {
+        if (var.init_data.size() <= 3) {
+            result += std::format(" = {{{}", var.init_data[0]);
+            for (auto i = 1uz; i < var.init_data.size(); ++i) {
+                result += std::format(",{}", var.init_data[i]);
             }
             result += '}';
         } else {
             result +=
                 std::format(" = {{{}, {}, ..., {}}}",
-                            array.init_data[0], array.init_data[1],
-                            array.init_data.back());
+                            var.init_data[0], var.init_data[1],
+                            var.init_data.back());
         }
     }
     result += '\n';
     return result;
 }
 
-std::string c_generator::generate_scalar_definition(symbol_info const &scalar) {
-    auto const address = m_memsize;
+std::string c_generator::generate_scalar_definition(symbol_info const &var, machine_word_t offset) {
     auto result =
-        std::format(" word_t * const {} = &memory[{}];", name(scalar), address);
-    if (!scalar.init_data.empty()) {
-        add_initializer(address, scalar.init_data);
-        result += std::format(" // = {}", scalar.init_data[0]);
+        std::format(" word_t * const {} = &{}[{}];",
+                    name(var), base(var), offset);
+    if (!var.init_data.empty()) {
+        result += std::format(" // = {}", var.init_data[0]);
     }
     result += '\n';
     return result;
