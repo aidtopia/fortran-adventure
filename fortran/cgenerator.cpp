@@ -166,6 +166,7 @@ std::string c_generator::generate_c(program const &prog) {
 
 std::string c_generator::generate_program(program const &prog) {
     m_memsize = 0;
+    m_init_data.clear();
     // Argument evaluation order is not specified, so we generate each
     // portion first and use the std::format to concatenate it all together.
     auto const builtins      = generate_builtins(prog);
@@ -173,16 +174,17 @@ std::string c_generator::generate_program(program const &prog) {
     auto const common_blocks = generate_common_blocks(prog);
     auto const main_program  = generate_unit(prog);
     auto const subprograms   = generate_subprograms(prog);
+    auto const init_function = generate_static_initialization();
     auto const main_function = generate_main_function(prog);
 
     // We generate the memory last, because the required memory size is a
     // side-effect of generating everything else.
     auto const memory = std::format("static word_t memory[{}];\n", m_memsize);
 
-    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
         machine_definitions(), io_subsystem(), kron_subsystem(), builtins,
         prototypes, memory, common_blocks, main_program, subprograms,
-        usage_function(), main_function);
+        init_function, usage_function(), main_function);
 }
 
 std::string c_generator::generate_main_function(program const &prog) {
@@ -213,6 +215,7 @@ int main(int argc, const char *argv[]) {{
             fprintf(stderr, "ignoring argument: %s\n", arg);
         }}
     }}
+    initialize_static_data();
     sub{}();
     return 0;
 }}
@@ -315,6 +318,46 @@ std::string c_generator::generate_subprograms(program const &prog) {
     return result;
 }
 
+std::string c_generator::generate_static_initialization() {
+    auto const is_run = [] (auto data) -> bool {
+        if (data.size() <= 3) return false;
+        for (auto value : data) {
+            if (value != data.front()) return false;
+        }
+        return true;
+    };
+
+    auto runs = std::string{};
+    auto singletons = std::string{};
+    for (auto [block, offset, data] : m_init_data) {
+        auto const base =
+            block.empty() ? std::string{"memory"}
+                          : std::format("common{}", block);
+        if (is_run(data)) {
+            if (data.front() != 0) {
+                runs +=
+                    std::format(
+                        " for (i = 0; i < {}; ++i) {}[{}+i] = {};\n",
+                        data.size(), base, offset, data.front());
+            }
+        } else {
+            for (auto value : data) {
+                if (value != 0) {
+                    singletons +=
+                        std::format(" {}[{}] = {};\n", base, offset, value);
+                }
+                ++offset;
+            }
+        }
+    }
+
+    if (!runs.empty()) runs = std::format(" int i;\n{}", runs);
+
+    return
+        std::format("void initialize_static_data() {{\n{}{}}}\n",
+                    runs, singletons);
+}
+
 std::string c_generator::generate_unit(unit const &u) {
     return std::format("{} {{\n{}{}{}{}{}{}{}}}\n\n",
                        generate_function_signature(u),
@@ -385,6 +428,8 @@ std::string c_generator::generate_dummies(unit const &u) {
 }
 
 std::string c_generator::generate_common_variable_declarations(unit const &u) {
+    // Note that we do NOT update m_memsize here because the space for the
+    // individual common variables was already "allocated" by the comdat block.
     auto const commons = u.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return {};
     auto result = std::string{" // Common variables\n"};
@@ -397,13 +442,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
             result +=
                 std::format(" word_t * const {} = &common{}[{}];\n",
                             name(common), block, offset);
-            // Since the common variable is a reference into the common block,
-            // we cannot initialize it in the declaration.
-            for (std::size_t i = 0; i < common.init_data.size(); ++i) {
-                result +=
-                    std::format(" {}[{}] = {};\n",
-                                name(common), i, common.init_data[i]);
-            }
+            add_initializer(block, offset, common.init_data);
         }
         // Its size still matters to the layout, even if it wasn't referenced.
         offset += array_size(common.shape);
@@ -419,6 +458,7 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     auto result = std::string(" // Local variables\n");
     for (auto const &local : locals) {
         result += generate_variable_definition(local);
+        m_memsize += array_size(local.shape);
     }
     return result;
 }
@@ -468,42 +508,50 @@ std::string c_generator::generate_variable_definition(
 }
 
 std::string c_generator::generate_array_definition(symbol_info const &array) {
-    auto result = std::string{};
     auto const size = array_size(array.shape);
+    auto address = m_memsize;
+    auto result =
+        std::format(" word_t * const {} = &memory[{}]; // [{}]",
+                    name(array), address, size);
     if (!array.init_data.empty()) {
-        result += std::format(" static word_t {}[{}]", name(array), size);
-        if (!array.init_data.empty()) {
+        add_initializer(address, array.init_data);
+        if (array.init_data.size() <= 3) {
             result += std::format(" = {{{}", array.init_data[0]);
-            for (std::size_t i = 1; i < array.init_data.size(); ++i) {
+            for (auto i = 1uz; i < array.init_data.size(); ++i) {
                 result += std::format(",{}", array.init_data[i]);
             }
             result += '}';
+        } else {
+            result +=
+                std::format(" = {{{}, {}, ..., {}}}",
+                            array.init_data[0], array.init_data[1],
+                            array.init_data.back());
         }
-        result += "; // TODO: This needs to be in core memory!\n";
-    } else {
-        result +=
-            std::format(" word_t * const {} = &memory[{}]; // [{}]\n",
-                        name(array), m_memsize, size);
-        m_memsize += size;
     }
+    result += '\n';
     return result;
 }
 
 std::string c_generator::generate_scalar_definition(symbol_info const &scalar) {
-    auto result = std::string{};
+    auto const address = m_memsize;
+    auto result =
+        std::format(" word_t * const {} = &memory[{}];", name(scalar), address);
     if (!scalar.init_data.empty()) {
-        result += std::format(" static word_t {}[1]", name(scalar));
-        if (!scalar.init_data.empty()) {
-            result += std::format(" = {{{}}}", scalar.init_data[0]);
-        }
-        result += "; // TODO: This needs to be in core memory!\n";
-    } else {
-        result +=
-            std::format(" word_t * const {} = &memory[{}];\n",
-                        name(scalar), m_memsize);
-        m_memsize += 1;
+        add_initializer(address, scalar.init_data);
+        result += std::format(" // = {}", scalar.init_data[0]);
     }
+    result += '\n';
     return result;
+}
+
+void c_generator::add_initializer(
+    symbol_name block,
+    machine_word_t offset,
+    init_data_t data
+) {
+    if (!data.empty()) {
+        m_init_data.emplace_back(block, offset, std::move(data));
+    }
 }
 
 constexpr std::string_view c_generator::machine_definitions() {
