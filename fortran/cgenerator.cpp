@@ -1,4 +1,4 @@
-#include "generator.h"
+#include "cgenerator.h"
 
 #include "symbols.h"
 #include "utility.h"
@@ -36,6 +36,7 @@ namespace {
     static bool is_referenced_subprogram(symbol_info const &a) {
         return a.kind == symbolkind::subprogram && a.referenced;
     }
+
     static bool by_block_index(symbol_info const &a, symbol_info const &b) {
         if (a.comdat < b.comdat) return true;
         if (a.comdat > b.comdat) return false;
@@ -76,7 +77,7 @@ namespace {
         symbol_name name;
         std::string_view code;
     };
-    static auto constexpr builtins = std::array<builtin_t, 8>{
+    static auto constexpr available_builtins = std::array<builtin_t, 8>{
         builtin_t{symbol_name{"IABS"},
 R"(word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
 )"},
@@ -158,54 +159,34 @@ word_t fnRAN(word_t *state) {
 
 }
 
-void generator::generate(std::ostream &out, program const &source) {
-    auto g = generator{out};
-    g.generate_program(source);
+std::string c_generator::generate_c(program const &prog) {
+    auto g = c_generator{};
+    return g.generate_program(prog);
 }
 
-void generator::generate_program(program const &prog) const {
-    generate_machine_definitions();
-    generate_builtins(prog);
-    generate_prototypes(prog);
+std::string c_generator::generate_program(program const &prog) {
+    m_memsize = 0;
+    // Argument evaluation order is not specified, so we generate each
+    // portion first and use the std::format to concatenate it all together.
+    auto const builtins      = generate_builtins(prog);
+    auto const prototypes    = generate_prototypes(prog);
+    auto const common_blocks = generate_common_blocks(prog);
+    auto const main_program  = generate_unit(prog);
+    auto const subprograms   = generate_subprograms(prog);
+    auto const main_function = generate_main_function(prog);
 
-    // addr contains the next available address in the program's memory.
-    auto addr = core_addr{0};
-    auto const core_size = generate_memory(prog);
+    // We generate the memory last, because the required memory size is a
+    // side-effect of generating everything else.
+    auto const memory = std::format("static word_t memory[{}];\n", m_memsize);
 
-    generate_common_blocks(prog, addr);
-
-    generate_unit(prog, addr);
-
-    auto const subprograms = prog.extract_subprograms();
-    for (auto const *pu : subprograms) {
-        generate_unit(*pu, addr);
-    }
-
-    assert(addr <= core_size);
-
-    spew("{}", R"(
-void usage() {
-    printf(
-        "\nOptions:\n\n"
-        "-CAPS            Capitalize all letters in the keyboard input\n"
-        "                 handler. Disabled by default.\n\n"
-        "-d<date>         Force DATE to return the specified date. Allows\n"
-        "                 many formats, but these are recommended:\n"
-        "                   yyyy-mm-dd   example:  -d1977-01-01\n"
-        "                   dd-MMM-yy    example:  -d01-JAN-77\n\n"
-        "-t<time>         Force TIME to return the specified time.\n"
-        "                   hh:mm        example:  -t13:35\n\n"
-        "-f<name>=<path>  Substitutes <path> whenever the program tries to\n"
-        "                 open a file named <name>.\n"
-        "                   example:  -fTEXT=../adven.dat\n\n"
-        "-y2k[-]          By default, DATE applies a hack to dates after 1999\n"
-        "                 in an attempt to bypass Y2K bugs. To disable this\n"
-        "                 hack, put '-' after the flag:  -y2k-\n\n"
-        "-h               Displays this option summary.\n\n");
+    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+        machine_definitions(), io_subsystem(), kron_subsystem(), builtins,
+        prototypes, memory, common_blocks, main_program, subprograms,
+        usage_function(), main_function);
 }
-)");
 
-    spew(R"(
+std::string c_generator::generate_main_function(program const &prog) {
+    return std::format(R"(
 int main(int argc, const char *argv[]) {{
     io_init();
     kron_init();
@@ -236,12 +217,297 @@ int main(int argc, const char *argv[]) {{
     return 0;
 }}
 )", prog.unit_name());
-
 }
 
-void generator::generate_machine_definitions() const {
-    spew("{}", R"(
-#define __STDC_WANT_LIB_EXT1__ 1
+std::string c_generator::generate_builtins(program const &prog) {
+    auto result = std::string{};
+
+    // Find all functions and subroutines that are referenced in any unit.
+    auto undefined_subs = std::set<symbol_name>{};
+    auto const subs_refed_by_main =
+        prog.extract_symbols(is_referenced_subprogram);
+    for (auto const &s : subs_refed_by_main) {
+        undefined_subs.insert(s.name);
+    }
+    auto const subprograms = prog.extract_subprograms();
+    for (auto const *pu : subprograms) {
+        auto const subs_refed_by_unit =
+            pu->extract_symbols(is_referenced_subprogram);
+        for (auto const &s : subs_refed_by_unit) {
+            undefined_subs.insert(s.name);
+        }
+    }
+
+    // Remove ones that are defined.
+    undefined_subs.erase(prog.unit_name());
+    for (auto const *pu : subprograms) {
+        undefined_subs.erase(pu->unit_name());
+    }
+
+    // Provide built-in ones.
+    bool any_builtins = false;
+    for (auto const &builtin : available_builtins) {
+        if (undefined_subs.contains(builtin.name)) {
+            if (!any_builtins) {
+                result += "// Emulated PDP-10 system library subroutines.\n";
+                any_builtins = true;
+            }
+            result += builtin.code;
+            undefined_subs.erase(builtin.name);
+        }
+    }
+
+    // In theory, we could provide an error message if there was anything left
+    // in `undefined_subs`. Unfortunately, that includes statement functions.
+    return result;
+}
+
+std::string c_generator::generate_prototypes(program const &prog) {
+    auto result = std::string{};
+
+    auto const subprograms = prog.extract_subprograms();
+    if (subprograms.empty()) return result;
+
+    result += "// Function prototypes for the program's subprograms\n";
+    for (auto const *pu : subprograms) {
+        result += std::format("{};\n", generate_function_signature(*pu));
+    }
+
+    return result;
+}
+
+std::string c_generator::generate_common_blocks(program const &prog) {
+    auto result = std::string{};
+    auto const commons = prog.extract_symbols(is_common, by_block_index);
+    if (commons.empty()) return result;
+    result += "// Common Blocks\n";
+    auto block = symbol_name{};
+    auto size = std::size_t{0};
+    for (auto const &var : commons) {
+        if (var.comdat != block) {
+            result += generate_common_block(block, size);
+            block = var.comdat;
+            size = 0;
+        }
+        size += array_size(var.shape);
+    }
+    result += generate_common_block(block, size);
+    return result;
+}
+
+std::string c_generator::generate_common_block(
+    symbol_name const &block,
+    machine_word_t size
+) {
+    if (size == 0) return {};
+    auto const addr = m_memsize;
+    m_memsize += size;
+    return std::format("word_t * const common{} = &memory[{}]; // [{}];\n",
+                       block, addr, size);
+}
+
+std::string c_generator::generate_subprograms(program const &prog) {
+    auto result = std::string{};
+    auto const subprograms = prog.extract_subprograms();
+    for (auto const *pu : subprograms) {
+        result += generate_unit(*pu);
+    }
+    return result;
+}
+
+std::string c_generator::generate_unit(unit const &u) {
+    return std::format("{} {{\n{}{}{}{}{}{}{}}}\n\n",
+                       generate_function_signature(u),
+                       generate_return_value(u),
+                       generate_dummies(u),
+                       generate_common_variable_declarations(u),
+                       generate_local_variable_declarations(u),
+                       generate_format_specifications(u),
+                       generate_statements(u),
+                       generate_return_statement(u));
+}
+
+std::string c_generator::generate_function_signature(unit const &u) {
+    auto result = std::string{};
+    auto const retval = u.extract_symbols(is_return_value);
+    if (retval.empty()) {
+        result += std::format("void sub{}(", u.unit_name());
+    } else {
+        result += std::format("word_t fn{}(", u.unit_name());
+    }
+    auto const parameters = u.extract_symbols(is_argument, by_index);
+    for (auto const &param : parameters) {
+        if (is_return_value(param)) continue;
+        if (param.index > 1) result += ", ";
+        result += std::format("word_t *{}", name(param));
+    }
+    result += ')';
+    return result;
+}
+
+std::string c_generator::generate_statements(unit const &u) {
+    auto result = std::string{};
+
+    auto macros_to_undef = std::vector<std::string>{};
+    for (auto const &statement : u.code()) {
+        if (auto const c_stmt = statement->generate(u); !c_stmt.empty()) {
+            result += std::format(" {}\n", c_stmt);
+            if (auto const macro = macro_defined(c_stmt); !macro.empty()) {
+                macros_to_undef.push_back(macro);
+            }
+        }
+    }
+    for (auto const &macro : macros_to_undef) {
+        result += std::format(" #undef {}\n", macro);
+    }
+
+    return result;
+}
+
+std::string c_generator::generate_return_value(unit const &u) {
+    auto const retvals = u.extract_symbols(is_return_value); 
+    if (retvals.empty()) return {};
+    auto const &retval = retvals.front();
+    auto const addr = m_memsize;
+    m_memsize += array_size(retval.shape);
+    return std::format(" word_t *{} = &memory[{}];  // return value\n",
+                       name(retval), addr);
+}
+
+std::string c_generator::generate_dummies(unit const &u) {
+    // Avoid compiler warnings for unused arguments.
+    auto result = std::string{};
+    auto const dummies = u.extract_symbols(is_unreferenced_argument);
+    for (auto const dummy : dummies) {
+        result += std::format(" (void) {};  // unused argument\n", name(dummy));
+    }
+    return result;
+}
+
+std::string c_generator::generate_common_variable_declarations(unit const &u) {
+    auto const commons = u.extract_symbols(is_common, by_block_index);
+    if (commons.empty()) return {};
+    auto result = std::string{" // Common variables\n"};
+    auto block = symbol_name{};
+    auto offset = machine_word_t{0};
+    for (auto const &common : commons) {
+        if (common.comdat != block) offset = 0;
+        block = common.comdat;
+        if (common.referenced) {
+            result +=
+                std::format(" word_t * const {} = &common{}[{}];\n",
+                            name(common), block, offset);
+            // Since the common variable is a reference into the common block,
+            // we cannot initialize it in the declaration.
+            for (std::size_t i = 0; i < common.init_data.size(); ++i) {
+                result +=
+                    std::format(" {}[{}] = {};\n",
+                                name(common), i, common.init_data[i]);
+            }
+        }
+        // Its size still matters to the layout, even if it wasn't referenced.
+        offset += array_size(common.shape);
+        // Note that we do NOT tally to m_memsize, as those are accounted for
+        // computed the common _blocks_ are computed.
+    }
+    return result;
+}
+
+std::string c_generator::generate_local_variable_declarations(unit const &u) {
+    auto const locals = u.extract_symbols(is_local);
+    if (locals.empty()) return {};
+    auto result = std::string(" // Local variables\n");
+    for (auto const &local : locals) {
+        result += generate_variable_definition(local);
+    }
+    return result;
+}
+
+std::string c_generator::generate_format_specifications(unit const &u) {
+    if (u.formats().empty()) return {};
+    auto result = std::string{" // IO format specifications\n"};
+    for (auto const format : u.formats()) {
+        result +=
+            std::format(" static const char fmt{}[] = \"{}\";\n",
+                        format.first, escape_string(format.second));
+    }
+    return result;
+}
+
+std::string c_generator::generate_return_statement(unit const &u) {
+    auto result = std::string{};
+
+    auto const return_label = u.find_symbol(symbol_name{"return"});
+    if (return_label.referenced) {
+        result += std::format(" L{}: ", return_label.name);
+        auto const retvals = u.extract_symbols(is_return_value); 
+        if (retvals.empty()) {
+            result += "return;\n";
+        } else {
+            result += std::format("return *{};\n", name(retvals .front()));
+        }
+    }
+
+    auto const stop_label   = u.find_symbol(symbol_name{"stop"});
+    if (stop_label.referenced) {
+        result += std::format(" L{}: exit(EXIT_SUCCESS);\n", stop_label.name);
+    }
+
+    return result;
+}
+
+std::string c_generator::generate_variable_definition(
+    symbol_info const &variable
+) {
+    if (!variable.referenced) return {};
+    if (is_array(variable)) {
+        return generate_array_definition(variable);
+    } else {
+        return generate_scalar_definition(variable);
+    }
+}
+
+std::string c_generator::generate_array_definition(symbol_info const &array) {
+    auto result = std::string{};
+    auto const size = array_size(array.shape);
+    if (!array.init_data.empty()) {
+        result += std::format(" static word_t {}[{}]", name(array), size);
+        if (!array.init_data.empty()) {
+            result += std::format(" = {{{}", array.init_data[0]);
+            for (std::size_t i = 1; i < array.init_data.size(); ++i) {
+                result += std::format(",{}", array.init_data[i]);
+            }
+            result += '}';
+        }
+        result += "; // TODO: This needs to be in core memory!\n";
+    } else {
+        result +=
+            std::format(" word_t * const {} = &memory[{}]; // [{}]\n",
+                        name(array), m_memsize, size);
+        m_memsize += size;
+    }
+    return result;
+}
+
+std::string c_generator::generate_scalar_definition(symbol_info const &scalar) {
+    auto result = std::string{};
+    if (!scalar.init_data.empty()) {
+        result += std::format(" static word_t {}[1]", name(scalar));
+        if (!scalar.init_data.empty()) {
+            result += std::format(" = {{{}}}", scalar.init_data[0]);
+        }
+        result += "; // TODO: This needs to be in core memory!\n";
+    } else {
+        result +=
+            std::format(" word_t * const {} = &memory[{}];\n",
+                        name(scalar), m_memsize);
+        m_memsize += 1;
+    }
+    return result;
+}
+
+constexpr std::string_view c_generator::machine_definitions() {
+    return R"(#define __STDC_WANT_LIB_EXT1__ 1
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
@@ -327,10 +593,11 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
 }
-)");
+)";
+}
 
-    spew("{}", R"(
-// The input-output subsystem.
+constexpr std::string_view c_generator::io_subsystem() {
+    return R"(// The input-output subsystem
 #define IO_MAX_MAPPINGS 4
 #define IO_MAX_UNITS 4
 struct iocontext {
@@ -654,10 +921,11 @@ void io_output(word_t unit, word_t *pvar) {
     *io.pdst = '\0';
     --io.repeat;
 }
-)");
+)";
+}
 
-    spew("{}", R"(
-// Provides date and time, with compatibility hacks.
+constexpr std::string_view c_generator::kron_subsystem() {
+    return R"(// The date and time subsystem
 struct kroncontext {
     bool y2k_hack;
     bool override_time;
@@ -771,266 +1039,31 @@ void kron_override_date(const char *p) {
     kron.overrides.tm_mday = day;
     kron.override_date = true;
 }
-)");
-
+)";
 }
 
-void generator::generate_builtins(program const &prog) const {
-    // Find all functions and subroutines that are referenced in any unit.
-    auto undefined_subs = std::set<symbol_name>{};
-    auto const subs_refed_by_main =
-        prog.extract_symbols(is_referenced_subprogram);
-    for (auto const &s : subs_refed_by_main) {
-        undefined_subs.insert(s.name);
-    }
-    auto const subprograms = prog.extract_subprograms();
-    for (auto const *pu : subprograms) {
-        auto const subs_refed_by_unit =
-            pu->extract_symbols(is_referenced_subprogram);
-        for (auto const &s : subs_refed_by_unit) {
-            undefined_subs.insert(s.name);
-        }
-    }
-
-    // Remove ones that are defined.
-    undefined_subs.erase(prog.unit_name());
-    for (auto const *pu : subprograms) {
-        undefined_subs.erase(pu->unit_name());
-    }
-
-    // Provide built-in ones.
-    bool any_builtins = false;
-    for (auto const &builtin : builtins) {
-        if (undefined_subs.contains(builtin.name)) {
-            if (!any_builtins) {
-                spew("// Emulated PDP-10 system library subroutines.\n");
-                any_builtins = true;
-            }
-            spew("{}", builtin.code);
-            undefined_subs.erase(builtin.name);
-        }
-    }
-
-    // In theory, we could provide an error message if there was anything left
-    // in `undefined_subs`. Unfortunately, that includes statement functions.
+constexpr std::string_view c_generator::usage_function() {
+    return R"(
+void usage() {
+    printf(
+        "\nOptions:\n\n"
+        "-CAPS            Capitalize all letters in the keyboard input\n"
+        "                 handler. Disabled by default.\n\n"
+        "-d<date>         Force DATE to return the specified date. Allows\n"
+        "                 many formats, but these are recommended:\n"
+        "                   yyyy-mm-dd   example:  -d1977-01-01\n"
+        "                   dd-MMM-yy    example:  -d01-JAN-77\n\n"
+        "-t<time>         Force TIME to return the specified time.\n"
+        "                   hh:mm        example:  -t13:35\n\n"
+        "-f<name>=<path>  Substitutes <path> whenever the program tries to\n"
+        "                 open a file named <name>.\n"
+        "                   example:  -fTEXT=../adven.dat\n\n"
+        "-y2k[-]          By default, DATE applies a hack to dates after 1999\n"
+        "                 in an attempt to bypass Y2K bugs. To disable this\n"
+        "                 hack, put '-' after the flag:  -y2k-\n\n"
+        "-h               Displays this option summary.\n\n");
 }
-
-void generator::generate_prototypes(program const &prog) const {
-    auto const subprograms = prog.extract_subprograms();
-    if (subprograms.empty()) return;
-
-    spew("\n// Function prototypes for the program's subprograms\n");
-    for (auto const *pu : subprograms) {
-        generate_function_signature(*pu);
-        spew(";\n");
-    }
-}
-
-generator::core_addr generator::generate_memory(program const &prog) const {
-    auto memory_size = core_addr{0};
-
-    // Core memory must contain all of the common blocks, all the local
-    // locals from each subprogram, and maybe the return value slots for
-    // subprograms that return a value.
-
-    // Since we're just computing the required size, we don't bother sorting
-    // the extracted symbols.
-
-    // We pull commons only from the main program, otherwise we'd end up
-    // double-counting.
-    auto const commons = prog.extract_symbols(is_common);
-    for (auto const &common : commons) {
-        memory_size += array_size(common.shape);
-    }
-
-    auto const locals = prog.extract_symbols(is_local);
-    for (auto const &variable : locals) {
-        memory_size += array_size(variable.shape);
-    }
-    auto const retvals = prog.extract_symbols(is_return_value);
-    for (auto const &retval : retvals) {
-        memory_size += array_size(retval.shape);
-    }
-
-    auto const subprograms = prog.extract_subprograms();
-    for (auto const &sub : subprograms) {
-        auto const sublocals = sub->extract_symbols(is_local);
-        for (auto const &variable : sublocals) {
-            memory_size += array_size(variable.shape);
-        }
-        auto const subretvals = sub->extract_symbols(is_return_value);
-        for (auto const &retval : subretvals) {
-            memory_size += array_size(retval.shape);
-        }
-    }
-
-    spew("static word_t memory[{}];\n", memory_size);
-    return memory_size;
-}
-
-void generator::generate_common_blocks(program const &prog, core_addr &addr) const {
-    auto const commons = prog.extract_symbols(is_common, by_block_index);
-    if (commons.empty()) return;
-    spew("\n// Common Blocks\n");
-    auto block = symbol_name{};
-    auto size = std::size_t{0};
-    for (auto const &var : commons) {
-        if (var.comdat != block) {
-            generate_common_block(block, size, addr);
-            block = var.comdat;
-            size = 0;
-        }
-        size += array_size(var.shape);
-    }
-    generate_common_block(block, size, addr);
-}
-
-void generator::generate_common_block(
-    symbol_name const &block,
-    core_addr size,
-    core_addr &addr
-) const {
-    if (size > 0) {
-        spew("word_t * const common{} = &memory[{}]; // [{}];\n",
-             block, addr, size);
-        addr += size;
-    }
-}
-
-void generator::generate_unit(unit const &u, core_addr &addr) const {
-    if (u.code().empty()) return;
-    spew("\n");
-    generate_function_signature(u);
-    spew(" {{\n");
-
-    auto const retvals = u.extract_symbols(is_return_value); 
-    if (!retvals.empty()) {
-        auto const &retval = retvals.front();
-        spew(" word_t *{} = &memory[{}];  // return value\n",
-            name(retval), addr);
-        addr += array_size(retval.shape);
-    }
-
-    // Avoid compiler warnings for unused parameters.
-    auto const dummies = u.extract_symbols(is_unreferenced_argument);
-    for (auto const dummy : dummies) {
-        spew(" (void) {};  // unused argument\n", name(dummy));
-    }
-
-    auto const commons = u.extract_symbols(is_common, by_block_index);
-    auto block = symbol_name{};
-    auto offset = core_addr{0};
-    for (auto const &common : commons) {
-        if (common.comdat != block) offset = 0;
-        block = common.comdat;
-        if (common.referenced) {
-            spew(" word_t * const {} = &common{}[{}];\n",
-                name(common), block, offset);
-            // Since the common variable is a reference into the common block,
-            // we cannot initialize it in the declaration.
-            for (std::size_t i = 0; i < common.init_data.size(); ++i) {
-                spew(" {}[{}] = {};\n", name(common), i, common.init_data[i]);
-            }
-        }
-        // Its size still matters to the layout, even if it wasn't referenced.
-        offset += array_size(common.shape);
-    }
-
-    auto const locals = u.extract_symbols(is_local);
-    for (auto const &local : locals) {
-        generate_variable_definition(local, addr);
-    }
-
-    for (auto const format : u.formats()) {
-        spew(" static const char fmt{}[] = \"{}\";\n",
-             format.first, escape_string(format.second));
-    }
-
-    auto macros_to_undef = std::vector<std::string>{};
-    auto const &code = u.code();
-    for (auto const &statement : code) {
-        if (auto const c_stmt = statement->generate(u); !c_stmt.empty()) {
-            spew(" {}\n", c_stmt);
-            if (auto const macro = macro_defined(c_stmt); !macro.empty()) {
-                macros_to_undef.push_back(macro);
-            }
-        }
-    }
-
-    auto const return_label = u.find_symbol(symbol_name{"return"});
-    if (return_label.referenced) {
-        spew(" L{}: ", return_label.name);
-        if (retvals.empty()) spew("return;\n");
-        else                 spew("return *{};\n", name(retvals .front()));
-    }
-    auto const stop_label   = u.find_symbol(symbol_name{"stop"});
-
-    if (stop_label.referenced) {
-        spew(" L{}: exit(EXIT_SUCCESS);\n", stop_label.name);
-    }
-
-    for (auto const &macro : macros_to_undef) {
-        spew(" #undef {}\n", macro);
-    }
-
-    spew("}}\n");
-}
-
-void generator::generate_function_signature(unit const &u) const {
-    auto const retval = u.extract_symbols(is_return_value);
-    if (retval.empty()) {
-        spew("void sub{}(", u.unit_name());
-    } else {
-        spew("word_t fn{}(", u.unit_name());
-    }
-    auto const parameters = u.extract_symbols(is_argument, by_index);
-    for (auto const &param : parameters) {
-        if (is_return_value(param)) continue;
-        if (param.index > 1) spew(", ");
-        spew("word_t *{}", name(param));
-    }
-    spew(")");
-}
-
-void generator::generate_variable_definition(symbol_info const &variable, core_addr &addr) const {
-    if (!variable.referenced) return;
-    if (is_array(variable)) {
-        generate_array_definition(variable, addr);
-    } else {
-        generate_scalar_definition(variable, addr);
-    }
-}
-
-void generator::generate_array_definition(symbol_info const &array, core_addr &addr) const {
-    auto const size = array_size(array.shape);
-    if (!array.init_data.empty()) {
-        spew(" static word_t {}[{}]", name(array), size);
-        if (!array.init_data.empty()) {
-            spew(" = {{{}", array.init_data[0]);
-            for (std::size_t i = 1; i < array.init_data.size(); ++i) {
-                spew(",{}", array.init_data[i]);
-            }
-            spew("}}");
-        }
-        spew("; // TODO: This needs to be in core memory!\n");
-    } else {
-        spew(" word_t * const {} = &memory[{}]; // [{}]\n",
-            name(array), addr, size);
-        addr += size;
-    }
-}
-
-void generator::generate_scalar_definition(symbol_info const &scalar, core_addr &addr) const {
-    if (!scalar.init_data.empty()) {
-        spew(" static word_t {}[1]", name(scalar));
-        if (!scalar.init_data.empty()) {
-            spew(" = {{{}}}", scalar.init_data[0]);
-        }
-        spew("; // TODO: This needs to be in core memory!\n");
-    } else {
-        spew(" word_t * const {} = &memory[{}];\n", name(scalar), addr);
-        addr += 1;
-    }
+)";
 }
 
 }

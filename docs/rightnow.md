@@ -17,8 +17,8 @@ There are two unnecessary variable declarations left.  Both are parameters in a 
 - [x] CROW0000_f4_1977-03-31 (a.k.a., adv.f4)
 - [ ] ~~consider BLKT0350~~ out of scope (at least for now)
 - [ ] ~~consider SUPN0350~~ out of scope (at least for now)
-- [ ] Enable save and restore by emulating core images
-- [ ] Reimplement statement functions to avoid unnecessary variables
+- [ ] Enable save and restore by emulating core images (in progress)
+- [x] Reimplement statement functions to avoid unnecessary variables
 - [ ] Write better notes about how Adventure works, comparing versions, etc.
 
 
@@ -112,3 +112,6 @@ To avoid breaking WOOD0350, I had to modify the code that provides the "built-in
 
 Hey, it works!
 
+## Statement Function Parameters
+
+A separate document about the problem of [Statement Function Parameters](stmdfuncparams.md).

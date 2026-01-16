@@ -151,10 +151,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="cgenerator.cpp" />
     <ClCompile Include="datalist.cpp" />
     <ClCompile Include="expressions.cpp" />
     <ClCompile Include="fortran.cpp" />
-    <ClCompile Include="generator.cpp" />
     <ClCompile Include="machine.cpp" />
     <ClCompile Include="parser.cpp" />
     <ClCompile Include="program.cpp" />
@@ -165,11 +165,11 @@
     <ClCompile Include="utility.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cgenerator.h" />
     <ClInclude Include="datalist.h" />
     <ClInclude Include="expression.h" />
     <ClInclude Include="expressions.h" />
     <ClInclude Include="fieldlist.h" />
-    <ClInclude Include="generator.h" />
     <ClInclude Include="indexcontrol.h" />
     <ClInclude Include="iolist.h" />
     <ClInclude Include="machine.h" />
