@@ -151,7 +151,7 @@ expression_t array_index_node::scale_up(
 
 
 std::string function_invocation_node::do_generate_value() const {
-    return std::format("TMP_WRAP(fn{}({}))",
+    return std::format("EVAL(fn{}({}))",
                        m_function, formatted_args(m_arguments));
 }
 

@@ -53,9 +53,8 @@ void assignment_statement::do_mark_referenced(unit &u) const {
 
 
 std::string call_statement::do_generate(unit const &) const {
-    // Do not use TMP_WRAP here: a subroutine call is not an expression.
-    return std::format("{{ tmp_push(); sub{}({}); tmp_pop(0); }}", m_name,
-                       format_arguments(m_args));
+    // Do not use EVAL here: a subroutine call is not an expression.
+    return std::format("CALL(sub{}({}));", m_name, format_arguments(m_args));
 }
 
 void call_statement::do_mark_referenced(unit &u) const {

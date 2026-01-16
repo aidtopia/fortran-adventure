@@ -596,7 +596,8 @@ word_t tmp_pop(word_t x) {
     assert(0 <= tmp_frame && tmp_frame <= tmp_index && tmp_index < TMP_BUFFER_SIZE);
     return x;
 }
-#define TMP_WRAP(EXPR) (tmp_push(), tmp_pop(EXPR))
+#define EVAL(EXPR) (tmp_push(), tmp_pop(EXPR))
+#define CALL(SUB)  do { tmp_push(); SUB; tmp_pop(0); } while (false)
 
 // Types for coercing function pointers for indirect subroutine calls.
 typedef void (*psub0)();
