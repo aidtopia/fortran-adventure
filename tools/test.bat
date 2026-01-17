@@ -10,7 +10,7 @@ ECHO Translating Adventure from Fortran to C...
 RMDIR /Q/S target > NUL 2> NUL
 MKDIR target > NUL 2> NUL
 DIR /B *.f* > target\sources.txt
-%~dp0..\fortran\x64\Debug\fortran @target\sources.txt
+%~dp0..\fortran\x64\Release\fortran @target\sources.txt
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:

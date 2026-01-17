@@ -185,7 +185,9 @@ std::string c_generator::generate_program(program const &prog) {
 
     // We generate the memory last, because the required memory size is a
     // side-effect of generating everything else.
-    auto const memory = std::format("static word_t memory[{}];\n", m_memsize);
+    auto const memory =
+        std::format("#define MEMSIZE {}\n"
+                    "static word_t memory[MEMSIZE];\n", m_memsize);
 
     return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
         machine_definitions(), io_subsystem(), kron_subsystem(), builtins,
@@ -285,6 +287,7 @@ std::string c_generator::generate_main_function(program const &prog) {
 int main(int argc, const char *argv[]) {{
     io_init();
     kron_init();
+    const char *core_file_name = NULL;
     for (int i = 1; i < argc; ++i) {{
         const char *arg = argv[i];
         if (arg == NULL) break;
@@ -298,6 +301,7 @@ int main(int argc, const char *argv[]) {{
                 case 'F': case 'f': io_addmapping(arg+2); continue;
                 case 'T': case 't': kron_override_time(arg+2); continue;
                 case 'D': case 'd': kron_override_date(arg+2); continue;
+                case 'C': case 'c': core_file_name = arg+2; continue;
                 case 'H': case 'h':
                 case '?':           usage(); return 0;
                 default:
@@ -308,7 +312,14 @@ int main(int argc, const char *argv[]) {{
             fprintf(stderr, "ignoring argument: %s\n", arg);
         }}
     }}
-    initialize_static_data();
+    if (core_file_name != NULL && *core_file_name != '\0') {{
+        if (!load_core(core_file_name, memory, MEMSIZE)) {{
+            memset(memory, 0, MEMSIZE*sizeof(word_t));
+            initialize_static_data();
+        }}
+    }} else {{
+        initialize_static_data();
+    }}
     sub{}();
     return 0;
 }}
@@ -556,6 +567,7 @@ constexpr std::string_view c_generator::machine_definitions() {
     return R"(#define __STDC_WANT_LIB_EXT1__ 1
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -639,6 +651,92 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
     return
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
+}
+
+char host_endianness() {
+    #if CHAR_BIT == 8
+        static const char buffer[sizeof(int)] = { 0x01, 0x02 };
+        int test = -1;
+        memcpy_s(&test, sizeof(test), buffer, sizeof(buffer));
+        switch (test) {
+            case 0x0102: return 'B';
+            case 0x0201: return 'L';
+            default:     break;
+        }
+    #endif
+    return '?';
+}
+
+typedef struct {
+    char magic[8];     // "CORE\x0D\x0A\x1A" (and NULL terminator)
+    char pdp_bits;     // 36 (bits in a PDP 10 machine word)
+    char host_bits;    // 64 (bits used to represent a machine word)
+    char host_endian;  // 'L' = little endian, 'B' = big endian
+    char reserved;     // 0
+    uint32_t count;    // number of machine words in the file
+    uint32_t offset;   // byte offset of first word from start of file
+    char padding[12];  // 0s
+} core_header;
+static const core_header core_model = {
+    {'C', 'O', 'R', 'E', '\x0D','\x0A', '\x1A', '\0'},
+    36, 64, '?', '\0', 0, (uint32_t)sizeof(core_header), 0
+};
+
+bool dump_core(const char *file_name, const word_t *memory, word_t count) {
+    FILE *core_file = fopen(file_name, "wb");
+    if (core_file == NULL) {
+        fprintf(stderr, "cannot open '%s' for writing\n", file_name);
+        return false;
+    }
+    core_header hdr = core_model;
+    hdr.count = (uint32_t) count;
+    hdr.host_endian = host_endianness();
+    const bool success =
+        fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
+        fwrite(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
+    if (!success) fputs("failed to save core dump", stderr);
+    fclose(core_file);
+    return success;
+}
+
+bool load_core(const char *file_name, word_t *memory, word_t count) {
+    FILE *core_file = fopen(file_name, "rb");
+    if (core_file == NULL) {
+        fprintf(stderr, "cannot open '%s' for reading\n", file_name);
+        return false;
+    }
+
+    core_header hdr = {0};
+    const bool success =
+        fread(&hdr, sizeof(hdr), 1, core_file) == 1 &&
+        memcmp(hdr.magic, core_model.magic, sizeof(hdr.magic)) == 0 &&
+        hdr.pdp_bits == core_model.pdp_bits &&
+        hdr.host_bits == core_model.host_bits &&
+        hdr.host_endian == host_endianness() &&
+        hdr.reserved == 0 &&
+        hdr.offset >= sizeof(hdr) &&
+        hdr.offset % sizeof(word_t) == 0 &&
+        hdr.count <= count &&
+        fseek(core_file, hdr.offset, SEEK_SET) == 0 &&
+        fread(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
+    fclose(core_file);
+    if (!success) fprintf(stderr, "failed to load core-image '%s'\n", file_name);
+    return success;
+}
+
+// Implementation for Fortran PAUSE statement
+void pause(const char *message, const word_t *memory, word_t count) {
+    if (count > 0 && memory != NULL) dump_core("core.dat", memory, count);
+    do {
+        puts(message);
+        char buf[4] = {0};
+        const char *response = fgets(buf, sizeof(buf), stdin);
+        const int ch = response == NULL ? ' ' : response[0];
+        if (ch == 'G' || ch == 'g') break;
+        if (ch == 'X' || ch == 'x') exit(EXIT_SUCCESS);
+        puts("\nPROGRAM IS PAUSED.  TYPE 'G' (RETURN) TO GO OR "
+             "'X' (RETURN) TO EXIT.");
+    } while (1);
 }
 )";
 }
@@ -993,10 +1091,10 @@ void kron_time(struct tm *ptm) {
     const time_t t = time(0);
 #if defined(_MSC_VER)
     const errno_t result = localtime_s(ptm, &t);
-    assert(result == 0);
+    assert(result == 0); (void) result;
 #elif defined(__STDC_LIB_EXT1__)
     void *result = localtime_s(&t, ptm);
-    assert(result != NULL);
+    assert(result != NULL); (void) result;
 #else
     *ptm = *localtime(&t);
 #endif
@@ -1096,6 +1194,8 @@ void usage() {
         "\nOptions:\n\n"
         "-CAPS            Capitalize all letters in the keyboard input\n"
         "                 handler. Disabled by default.\n\n"
+        "-c<file>         Load a core-image file into program memory during\n"
+        "                 initialization.\n\n"
         "-d<date>         Force DATE to return the specified date. Allows\n"
         "                 many formats, but these are recommended:\n"
         "                   yyyy-mm-dd   example:  -d1977-01-01\n"

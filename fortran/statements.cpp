@@ -67,7 +67,7 @@ void call_statement::do_mark_referenced(unit &u) const {
 
 std::string indirect_call_statement::do_generate(unit const &) const {
     return
-        std::format("{{ tmp_push(); (*(psub{})v{})({}); tmp_pop(0); }}",
+        std::format("CALL((*(psub{})v{})({}));",
                     m_args.size(), m_name, format_arguments(m_args));
 }
 
@@ -201,17 +201,9 @@ void open_statement::do_mark_referenced(unit &u) const {
 
 
 std::string pause_statement::do_generate(unit const &) const {
-    return std::format(
-        "do {{ \n"
-        "  puts(\"\\n{}\");\n"
-        "  char buf[4] = {{0}};\n"
-        "  const char *response = fgets(buf, sizeof(buf), stdin);\n"
-        "  const int ch = response == NULL ? ' ' : response[0];\n"
-        "  if (ch == 'G' || ch == 'g') break;\n"
-        "  if (ch == 'X' || ch == 'x') exit(EXIT_SUCCESS);\n"
-        "  puts(\"\\nPROGRAM IS PAUSED. TYPE 'G' (RETURN) TO GO OR "
-                "'X' (RETURN) TO EXIT.\");\n"
-        " }} while (1);", m_message);
+    // We pass the memory and count to allow a core dump during the pause.
+    return std::format("pause(\"\\n{}\", memory, MEMSIZE);\n",
+                       escape_string(m_message));
 }
 
 
