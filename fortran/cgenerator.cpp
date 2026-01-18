@@ -487,18 +487,6 @@ std::string c_generator::generate_format_specifications(unit const &u) {
 
 std::string c_generator::generate_return_statement(unit const &u) {
     auto result = std::string{};
-
-    auto const return_label = u.find_symbol(symbol_name{"return"});
-    if (return_label.referenced) {
-        result += std::format(" L{}: ", return_label.name);
-        auto const retvals = u.extract_symbols(is_return_value); 
-        if (retvals.empty()) {
-            result += "return;\n";
-        } else {
-            result += std::format("return *{};\n", name(retvals .front()));
-        }
-    }
-
     auto const stop_label   = u.find_symbol(symbol_name{"stop"});
     if (stop_label.referenced) {
         result +=
@@ -574,6 +562,16 @@ constexpr std::string_view c_generator::machine_definitions() {
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#if __STDC_VERSION__ >= 202311
+#define NORETURN [[noreturn]]
+#elif defined(_MSC_VER)
+#define NORETURN __declspec(noreturn)
+#elif __STDC_VERSION__ >= 201112
+#define NORETURN [[_Noreturn]]
+#else
+#define NORETURN /*noreturn*/
+#endif
 
 // Definitions for emulating the PDP-10 and its Fortran system.
 typedef int64_t word_t;
@@ -1240,7 +1238,7 @@ bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
     return success;
 }
 
-/*[[noreturn]]*/ void host_exit(int status) { exit(status); }
+NORETURN void host_exit(int status) { exit(status); }
 
 void host_pause(const char *message) {
     do {

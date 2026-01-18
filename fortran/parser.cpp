@@ -427,7 +427,7 @@ parser::expected<statement_t> parser::parse_data() {
                 // on it and it doesn't seem to cause any harm.  I noticed that
                 // SUPN0350 and others had to address this to compile with F77.
                 warn("common variable '{}' should not appear in a DATA "
-                     "statement other than in a BLOCK DATA subprogram",
+                     "statement outside a BLOCK DATA subprogram",
                      item.variable);  // also, we don't support BLOCK DATA
             }
             if (symbol.shape.empty()) {     // scalar
@@ -891,7 +891,7 @@ parser::expected<statement_t> parser::parse_return() {
             [] (auto const &info) {
                 return info.kind == symbolkind::retval;
             });
-
+    if (retvals.size() > 1) return error("too many values for RETURN");
     return retvals.empty() ? make<return_statement>()
                            : make<return_statement>(retvals.front().name);
 }

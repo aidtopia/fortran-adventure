@@ -258,18 +258,11 @@ void read_statement::do_mark_referenced(unit &u) const {
 
 
 std::string return_statement::do_generate(unit const &) const {
-    // TODO:  Try to remember out why I jump to a return rather than returning.
-    return "goto Lreturn;";
+    return m_retval.empty() ? "return;" : std::format("return *v{};", m_retval);
 }
 
 void return_statement::do_mark_referenced(unit &u) const {
     if (!m_retval.empty()) u.mark_symbol_referenced(m_retval);
-    // Since we implement RETURN as a goto to a special label, make sure that
-    // label exists and is referenced.
-    auto label = u.find_symbol(symbol_name{"return"});
-    label.kind = symbolkind::label;
-    label.referenced = true;
-    u.update_symbol(label);
 }
 
 
