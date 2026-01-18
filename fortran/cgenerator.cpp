@@ -285,6 +285,8 @@ std::string c_generator::generate_common_block(
 
 std::string c_generator::generate_main_function(program const &prog) {
     return std::format(R"(
+void atexit_handler(void) {{ host_savecore(memory, MEMSIZE); }}
+
 int main(int argc, const char *argv[]) {{
     io_init();
     kron_init();
@@ -321,6 +323,7 @@ int main(int argc, const char *argv[]) {{
     }} else {{
         initialize_static_data();
     }}
+    atexit(atexit_handler);
     sub{}();
     return 0;
 }}
@@ -471,23 +474,7 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     auto result = std::string{" // Local variables\n"};
     for (auto const &local : locals) {
         result += generate_variable_definition(local, m_memsize);
-        // BIG OL' HACK!!! TO MAKE IT EASIER TO SAVE A CORE-IMAGE FROM THE GAME,
-        // THE WOOD0350 CODE'S 'CIAO' SUBROUTINE IS INTENDED TO HAVE ITS 'K'
-        // VARIABLE SET TO 31 OR 32 BASED ON HOW CORE-IMAGES WORK ON YOUR
-        // SYSTEM.  FOR OUR SYSTEM, 31 IS THE RIGHT ANSWER.  I REALLY DON'T WANT
-        // TO EDIT THE SOURCE, AND THERE'S NO HOOK TO A "SYSTEM" CALL THAT I
-        // CAN INTERECEPT, SO I'M HACKING THE VALUE HERE.
-        if (local.name == symbol_name{"K"} &&
-            u.unit_name() == symbol_name{"CIAO"} &&
-            local.init_data.size() == 1 &&
-            local.init_data.front() == 32
-        ) {
-            auto const HACKED = init_data_t{31};
-            add_initializer(local.comdat, m_memsize, HACKED);
-        } else {
-            // NORMAL CODE
-            add_initializer(local.comdat, m_memsize, local.init_data);
-        }
+        add_initializer(local.comdat, m_memsize, local.init_data);
         m_memsize += array_size(local.shape);
     }
     return result;
@@ -520,7 +507,8 @@ std::string c_generator::generate_return_statement(unit const &u) {
 
     auto const stop_label   = u.find_symbol(symbol_name{"stop"});
     if (stop_label.referenced) {
-        result += std::format(" L{}: exit(EXIT_SUCCESS);\n", stop_label.name);
+        result +=
+            std::format(" L{}: host_exit(EXIT_SUCCESS);\n", stop_label.name);
     }
 
     return result;
@@ -747,7 +735,7 @@ void io_open(word_t unit, const char *name) {
             "You can restart the program with a file name mapping using the\n"
             "command line option -f, like this:\n\n"
             "    -f%s=<path>\n", name, name);
-        exit(EXIT_FAILURE);
+        host_exit(EXIT_FAILURE);
     }
 }
 
@@ -1134,6 +1122,50 @@ char host_endianness() {
     return '?';
 }
 
+void host_tidyfname(char *fname, size_t size, char const *defext) {
+    if (fname == NULL) return;
+    const char *source = fname;
+    const char *slash = NULL;
+    const char *dot = NULL;
+    char *target = fname;
+    while (isspace(*source)) ++source;
+    while (*source != '\0') {
+        char ch = *source++;
+        switch (ch) {
+            case '\r': case '\n': continue;
+            case '.':             dot   = target; break;
+#if _WIN32
+            case '/':             ch = '\\'; /*FALLTHROUGH*/
+            case '\\':            slash = target; break;
+            case '<': case '>':
+            case '"': case '|':
+            case '?': case '*':   ch = '_'; break;
+
+            case ':':  // allow only after a drive letter
+                if (target != fname + 1 || !isalpha(*fname)) ch = '_';
+                break;
+#else
+            case '\\':            ch = '/'; /*FALLTHROUGH*/
+            case '/':             slash = target; break;
+#endif
+            default:
+                if (ch < 0x20) ch = '_';
+                break;
+        }
+        *target++ = ch;
+    }
+    while (target != fname && isspace(*(target-1))) --target;
+    const bool needext =
+        target != fname && defext != NULL && *defext != '\0' &&
+        (dot == NULL ? true : slash == NULL ? false : dot < slash);
+    if (needext && defext != NULL && target + strlen(defext) < fname + size) {
+        dot = target;
+        if (*defext != '.') *target++ = '.';
+        while (*defext != '\0') *target++ = *defext++;
+    }
+    *target = '\0';
+}
+
 typedef struct {
     char magic[8];
     char pdp_bits;
@@ -1168,10 +1200,25 @@ bool host_dumpcore(const char *file_name, const word_t *memory, word_t count) {
     return success;
 }
 
+bool host_savecore(const word_t *memory, word_t count) {
+    if (memory == NULL || count == 0) return false;
+    puts("ENTER FILE NAME TO SAVE CORE IMAGE:");
+    char fname[260+1] = "";
+    if (fgets(fname, sizeof(fname), stdin) == NULL) return false;
+    host_tidyfname(fname, sizeof(fname), ".DMP");
+    if (*fname == '\0') return false;
+    return host_dumpcore(fname, memory, count);
+}
+
 bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
-    FILE *core_file = fopen(file_name, "rb");
+    const size_t len = strlen(file_name);
+    char fname[260+1] = "";
+    if (len >= sizeof(fname)) return false;
+    strncpy(fname, file_name, len);  // remove, have host_tidyfname take both source and target
+    host_tidyfname(fname, sizeof(fname), ".DMP");
+    FILE *core_file = fopen(fname, "rb");
     if (core_file == NULL) {
-        fprintf(stderr, "cannot open '%s' for reading\n", file_name);
+        fprintf(stderr, "cannot open '%s' for reading\n", fname);
         return false;
     }
 
@@ -1189,11 +1236,15 @@ bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
         fseek(core_file, hdr.offset, SEEK_SET) == 0 &&
         fread(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
     fclose(core_file);
-    if (!success) fprintf(stderr, "failed to load core-image '%s'\n", file_name);
+    if (!success) {
+        fprintf(stderr, "unable to load core-image '%s'\n", fname);
+    }
     return success;
 }
 
-void host_pause(const char *message, const word_t *memory, word_t count) {
+/*[[noreturn]]*/ void host_exit(int status) { exit(status); }
+
+void host_pause(const char *message) {
     do {
         puts(message);
         char buf[4] = {0};
@@ -1203,14 +1254,10 @@ void host_pause(const char *message, const word_t *memory, word_t count) {
         const char ch = (char)(islower(first) ? toupper(first) : first);
         switch (ch) {
             case 'G': return;
-            case 'X': exit(EXIT_SUCCESS);
-            case 'C': host_dumpcore("core.dat", memory, count); continue;
+            case 'X': host_exit(EXIT_SUCCESS);
         }
         puts("PROGRAM IS PAUSED.  TYPE 'G' (RETURN) TO GO OR "
              "'X' (RETURN) TO EXIT.");
-        if (memory != NULL && count > 0) {
-            puts("OR YOU CAN TYPE 'C' (RETURN) TO SAVE A CORE-IMAGE.");
-        }
     } while (1);
 }
 )";

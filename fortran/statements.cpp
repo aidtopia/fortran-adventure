@@ -202,8 +202,7 @@ void open_statement::do_mark_referenced(unit &u) const {
 
 std::string pause_statement::do_generate(unit const &) const {
     // We pass the memory and count to allow a core dump during the pause.
-    return std::format("host_pause(\"\\n{}\", memory, MEMSIZE);\n",
-                       escape_string(m_message));
+    return std::format("host_pause(\"\\n{}\");\n", escape_string(m_message));
 }
 
 
@@ -259,6 +258,7 @@ void read_statement::do_mark_referenced(unit &u) const {
 
 
 std::string return_statement::do_generate(unit const &) const {
+    // TODO:  Try to remember out why I jump to a return rather than returning.
     return "goto Lreturn;";
 }
 
