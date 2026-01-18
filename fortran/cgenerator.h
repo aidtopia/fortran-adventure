@@ -41,7 +41,6 @@ class c_generator {
         std::string generate_common_variable_declarations(unit const &u);
         std::string generate_local_variable_declarations(unit const &u);
         std::string generate_format_specifications(unit const &u);
-        std::string generate_return_statement(unit const &u);
 
         std::string generate_variable_definition(
             symbol_info const &var,

@@ -214,7 +214,6 @@ class stop_statement : public basic_statement {
         stop_statement() : basic_statement() {}
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_referenced(unit &u) const override;
 };
 
 class type_statement : public basic_statement {

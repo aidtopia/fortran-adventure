@@ -267,16 +267,7 @@ void return_statement::do_mark_referenced(unit &u) const {
 
 
 std::string stop_statement::do_generate(unit const &) const {
-    return "goto Lstop;";
-}
-
-void stop_statement::do_mark_referenced(unit &u) const {
-    // Since we implement STOP as a goto to a special label, make sure that
-    // label exists and is referenced.
-    auto label = u.find_symbol(symbol_name{"stop"});
-    label.kind = symbolkind::label;
-    label.referenced = true;
-    u.update_symbol(label);
+    return "host_exit(EXIT_SUCCESS);";
 }
 
 

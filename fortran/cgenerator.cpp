@@ -373,15 +373,14 @@ std::string c_generator::generate_static_initialization() {
 }
 
 std::string c_generator::generate_unit(unit const &u) {
-    return std::format("{} {{\n{}{}{}{}{}{}{}}}\n\n",
+    return std::format("{} {{\n{}{}{}{}{}{}}}\n\n",
                        generate_function_signature(u),
                        generate_return_value(u),
                        generate_dummies(u),
                        generate_common_variable_declarations(u),
                        generate_local_variable_declarations(u),
                        generate_format_specifications(u),
-                       generate_statements(u),
-                       generate_return_statement(u));
+                       generate_statements(u));
 }
 
 std::string c_generator::generate_function_signature(unit const &u) {
@@ -482,17 +481,6 @@ std::string c_generator::generate_format_specifications(unit const &u) {
             std::format(" static const char fmt{}[] = \"{}\";\n",
                         format.first, escape_string(format.second));
     }
-    return result;
-}
-
-std::string c_generator::generate_return_statement(unit const &u) {
-    auto result = std::string{};
-    auto const stop_label   = u.find_symbol(symbol_name{"stop"});
-    if (stop_label.referenced) {
-        result +=
-            std::format(" L{}: host_exit(EXIT_SUCCESS);\n", stop_label.name);
-    }
-
     return result;
 }
 
