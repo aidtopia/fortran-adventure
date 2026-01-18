@@ -87,19 +87,15 @@ namespace {
         builtin_t{symbol_name{"IABS"},
 R"(word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
 )"},
-
         builtin_t{symbol_name{"MIN0"},
 R"(word_t fnMIN0(word_t *a, word_t *b) { return (*a <= *b) ? *a : *b; }
 )"},
-
         builtin_t{symbol_name{"MAX0"},
 R"(word_t fnMAX0(word_t *a, word_t *b) { return (*a >= *b) ? *a : *b; }
 )"},
-
         builtin_t{symbol_name{"MOD"},
 R"(word_t fnMOD(word_t *a, word_t *b) { return *a % *b; }
 )"},
-
         builtin_t{symbol_name{"DATE"},
 R"(
 // Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
@@ -118,7 +114,6 @@ void subDATE(word_t r[2]) {
                    ' ');
 }
 )"},
-
         builtin_t{symbol_name{"TIME"},
 R"(
 // Returns the time as text, in the form 'hh:mm'.  Both fields are two digits,
@@ -148,7 +143,6 @@ void subIFILE(word_t *unit, word_t *file) {
     io_open(*unit, buffer);
 }
 )"},
-
         builtin_t{symbol_name{"RAN"},
 R"(
 // Returns a random REAL value between 0.0 and 1.0 (inclusive).
@@ -1211,10 +1205,14 @@ bool host_savecore(const word_t *memory, word_t count) {
 }
 
 bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
-    const size_t len = strlen(file_name);
     char fname[260+1] = "";
+    const size_t len = strlen(file_name);
     if (len >= sizeof(fname)) return false;
-    strncpy(fname, file_name, len);  // remove, have host_tidyfname take both source and target
+#if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
+    strncpy_s(fname, sizeof(fname), file_name, len);
+#else
+    strncpy(fname, file_name, len);
+#endif
     host_tidyfname(fname, sizeof(fname), ".DMP");
     FILE *core_file = fopen(fname, "rb");
     if (core_file == NULL) {
