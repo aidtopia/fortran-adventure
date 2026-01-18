@@ -189,8 +189,9 @@ std::string c_generator::generate_program(program const &prog) {
         std::format("#define MEMSIZE {}\n"
                     "static word_t memory[MEMSIZE];\n", m_memsize);
 
-    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        machine_definitions(), io_subsystem(), kron_subsystem(), builtins,
+    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+        machine_definitions(),
+        host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
         prototypes, memory, common_blocks, main_program, subprograms,
         init_function, usage_function(), main_function);
 }
@@ -313,7 +314,7 @@ int main(int argc, const char *argv[]) {{
         }}
     }}
     if (core_file_name != NULL && *core_file_name != '\0') {{
-        if (!load_core(core_file_name, memory, MEMSIZE)) {{
+        if (!host_loadcore(core_file_name, memory, MEMSIZE)) {{
             memset(memory, 0, MEMSIZE*sizeof(word_t));
             initialize_static_data();
         }}
@@ -470,7 +471,23 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     auto result = std::string{" // Local variables\n"};
     for (auto const &local : locals) {
         result += generate_variable_definition(local, m_memsize);
-        add_initializer(local.comdat, m_memsize, local.init_data);
+        // BIG OL' HACK!!! TO MAKE IT EASIER TO SAVE A CORE-IMAGE FROM THE GAME,
+        // THE WOOD0350 CODE'S 'CIAO' SUBROUTINE IS INTENDED TO HAVE ITS 'K'
+        // VARIABLE SET TO 31 OR 32 BASED ON HOW CORE-IMAGES WORK ON YOUR
+        // SYSTEM.  FOR OUR SYSTEM, 31 IS THE RIGHT ANSWER.  I REALLY DON'T WANT
+        // TO EDIT THE SOURCE, AND THERE'S NO HOOK TO A "SYSTEM" CALL THAT I
+        // CAN INTERECEPT, SO I'M HACKING THE VALUE HERE.
+        if (local.name == symbol_name{"K"} &&
+            u.unit_name() == symbol_name{"CIAO"} &&
+            local.init_data.size() == 1 &&
+            local.init_data.front() == 32
+        ) {
+            auto const HACKED = init_data_t{31};
+            add_initializer(local.comdat, m_memsize, HACKED);
+        } else {
+            // NORMAL CODE
+            add_initializer(local.comdat, m_memsize, local.init_data);
+        }
         m_memsize += array_size(local.shape);
     }
     return result;
@@ -651,92 +668,6 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
     return
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
-}
-
-char host_endianness() {
-    #if CHAR_BIT == 8
-        static const char buffer[sizeof(int)] = { 0x01, 0x02 };
-        int test = -1;
-        memcpy_s(&test, sizeof(test), buffer, sizeof(buffer));
-        switch (test) {
-            case 0x0102: return 'B';
-            case 0x0201: return 'L';
-            default:     break;
-        }
-    #endif
-    return '?';
-}
-
-typedef struct {
-    char magic[8];     // "CORE\x0D\x0A\x1A" (and NULL terminator)
-    char pdp_bits;     // 36 (bits in a PDP 10 machine word)
-    char host_bits;    // 64 (bits used to represent a machine word)
-    char host_endian;  // 'L' = little endian, 'B' = big endian
-    char reserved;     // 0
-    uint32_t count;    // number of machine words in the file
-    uint32_t offset;   // byte offset of first word from start of file
-    char padding[12];  // 0s
-} core_header;
-static const core_header core_model = {
-    {'C', 'O', 'R', 'E', '\x0D','\x0A', '\x1A', '\0'},
-    36, 64, '?', '\0', 0, (uint32_t)sizeof(core_header), 0
-};
-
-bool dump_core(const char *file_name, const word_t *memory, word_t count) {
-    FILE *core_file = fopen(file_name, "wb");
-    if (core_file == NULL) {
-        fprintf(stderr, "cannot open '%s' for writing\n", file_name);
-        return false;
-    }
-    core_header hdr = core_model;
-    hdr.count = (uint32_t) count;
-    hdr.host_endian = host_endianness();
-    const bool success =
-        fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
-        fwrite(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
-    if (!success) fputs("failed to save core dump", stderr);
-    fclose(core_file);
-    return success;
-}
-
-bool load_core(const char *file_name, word_t *memory, word_t count) {
-    FILE *core_file = fopen(file_name, "rb");
-    if (core_file == NULL) {
-        fprintf(stderr, "cannot open '%s' for reading\n", file_name);
-        return false;
-    }
-
-    core_header hdr = {0};
-    const bool success =
-        fread(&hdr, sizeof(hdr), 1, core_file) == 1 &&
-        memcmp(hdr.magic, core_model.magic, sizeof(hdr.magic)) == 0 &&
-        hdr.pdp_bits == core_model.pdp_bits &&
-        hdr.host_bits == core_model.host_bits &&
-        hdr.host_endian == host_endianness() &&
-        hdr.reserved == 0 &&
-        hdr.offset >= sizeof(hdr) &&
-        hdr.offset % sizeof(word_t) == 0 &&
-        hdr.count <= count &&
-        fseek(core_file, hdr.offset, SEEK_SET) == 0 &&
-        fread(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
-    fclose(core_file);
-    if (!success) fprintf(stderr, "failed to load core-image '%s'\n", file_name);
-    return success;
-}
-
-// Implementation for Fortran PAUSE statement
-void pause(const char *message, const word_t *memory, word_t count) {
-    if (count > 0 && memory != NULL) dump_core("core.dat", memory, count);
-    do {
-        puts(message);
-        char buf[4] = {0};
-        const char *response = fgets(buf, sizeof(buf), stdin);
-        const int ch = response == NULL ? ' ' : response[0];
-        if (ch == 'G' || ch == 'g') break;
-        if (ch == 'X' || ch == 'x') exit(EXIT_SUCCESS);
-        puts("\nPROGRAM IS PAUSED.  TYPE 'G' (RETURN) TO GO OR "
-             "'X' (RETURN) TO EXIT.");
-    } while (1);
 }
 )";
 }
@@ -1183,6 +1114,104 @@ void kron_override_date(const char *p) {
     kron.overrides.tm_mon = month - 1;
     kron.overrides.tm_mday = day;
     kron.override_date = true;
+}
+)";
+}
+
+constexpr std::string_view c_generator::host_subsystem() {
+    return R"(// Host subsystem (core images, pause, etc.)
+char host_endianness() {
+    #if CHAR_BIT == 8
+        static const char buffer[sizeof(int)] = { 0x01, 0x02 };
+        int test = -1;
+        memcpy_s(&test, sizeof(test), buffer, sizeof(buffer));
+        switch (test) {
+            case 0x0102: return 'B';
+            case 0x0201: return 'L';
+            default:     break;
+        }
+    #endif
+    return '?';
+}
+
+typedef struct {
+    char magic[8];
+    char pdp_bits;
+    char host_bits;
+    char host_endian;
+    char reserved;
+    uint32_t count;
+    uint32_t offset;
+    char pad[12];
+} host_corehdr;
+
+static const host_corehdr host_coremodel = {
+    {'C', 'O', 'R', 'E', '\x0D','\x0A', '\x1A', '\0'},
+    36, 64, '?', '\0', 0, (uint32_t)sizeof(host_corehdr), 0
+};
+
+bool host_dumpcore(const char *file_name, const word_t *memory, word_t count) {
+    if (memory == NULL || count == 0) return false;
+    FILE *core_file = fopen(file_name, "wb");
+    if (core_file == NULL) {
+        fprintf(stderr, "cannot open '%s' for writing\n", file_name);
+        return false;
+    }
+    host_corehdr hdr = host_coremodel;
+    hdr.count = (uint32_t) count;
+    hdr.host_endian = host_endianness();
+    const bool success =
+        fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
+        fwrite(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
+    if (!success) fputs("failed to save core dump", stderr);
+    fclose(core_file);
+    return success;
+}
+
+bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
+    FILE *core_file = fopen(file_name, "rb");
+    if (core_file == NULL) {
+        fprintf(stderr, "cannot open '%s' for reading\n", file_name);
+        return false;
+    }
+
+    host_corehdr hdr = {0};
+    const bool success =
+        fread(&hdr, sizeof(hdr), 1, core_file) == 1 &&
+        memcmp(hdr.magic, host_coremodel.magic, sizeof(hdr.magic)) == 0 &&
+        hdr.pdp_bits == host_coremodel.pdp_bits &&
+        hdr.host_bits == host_coremodel.host_bits &&
+        hdr.host_endian == host_endianness() &&
+        hdr.reserved == 0 &&
+        hdr.offset >= sizeof(hdr) &&
+        hdr.offset % sizeof(word_t) == 0 &&
+        hdr.count <= count &&
+        fseek(core_file, hdr.offset, SEEK_SET) == 0 &&
+        fread(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
+    fclose(core_file);
+    if (!success) fprintf(stderr, "failed to load core-image '%s'\n", file_name);
+    return success;
+}
+
+void host_pause(const char *message, const word_t *memory, word_t count) {
+    do {
+        puts(message);
+        char buf[4] = {0};
+        const char *response = fgets(buf, sizeof(buf), stdin);
+        const unsigned char first =
+            (unsigned char)(response == NULL ? ' ' : response[0]);
+        const char ch = (char)(islower(first) ? toupper(first) : first);
+        switch (ch) {
+            case 'G': return;
+            case 'X': exit(EXIT_SUCCESS);
+            case 'C': host_dumpcore("core.dat", memory, count); continue;
+        }
+        puts("PROGRAM IS PAUSED.  TYPE 'G' (RETURN) TO GO OR "
+             "'X' (RETURN) TO EXIT.");
+        if (memory != NULL && count > 0) {
+            puts("OR YOU CAN TYPE 'C' (RETURN) TO SAVE A CORE-IMAGE.");
+        }
+    } while (1);
 }
 )";
 }

@@ -66,6 +66,7 @@ class c_generator {
         static constexpr std::string_view machine_definitions();
         static constexpr std::string_view io_subsystem();
         static constexpr std::string_view kron_subsystem();
+        static constexpr std::string_view host_subsystem();
         static constexpr std::string_view usage_function();
 
         // As the C code is generated, m_memsize keeps track of the next
