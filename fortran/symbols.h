@@ -50,6 +50,8 @@ using array_shape = std::vector<dimension>;
 
 std::size_t array_size(array_shape const &shape);
 
+using init_data_t = std::vector<machine_word_t>;
+
 class symbol_name {
     public:
         constexpr symbol_name() : m_name{'\0'}, m_padding{'\0'} {}
@@ -101,12 +103,13 @@ class symbol_name {
 
 struct symbol_info {
     symbol_name name;
+    unsigned    address = 0;
     symbolkind  kind = symbolkind::local;
     symbol_name comdat;
     unsigned    index = 0;  // see note below
     datatype    type = datatype::unknown;
     array_shape shape;
-    std::vector<machine_word_t> init_data;
+    init_data_t init_data;
     bool        referenced;
 
     // NOTE the meaning of the index field above depends on the kind:

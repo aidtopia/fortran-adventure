@@ -19,8 +19,6 @@ class c_generator {
         c_generator() : m_memsize{0}, m_init_data{} {}
 
     private:
-        using init_data_t = std::vector<machine_word_t>;
-
         std::string generate_program(program const &prog);
         std::string generate_builtins(program const &prog);
         std::string generate_prototypes(program const &prog);
