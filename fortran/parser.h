@@ -19,7 +19,9 @@
 #include <memory>
 #include <set>
 #include <span>
+#include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -31,9 +33,8 @@ class parser {
         class error_t {
             public:
                 error_t() : m_msg("error") {};
-                explicit error_t(std::string_view msg) : m_msg(msg) {}
-                explicit error_t(std::string &&msg) : m_msg(std::move(msg)) {}
-                std::string message() const { return m_msg; }
+                explicit error_t(std::string msg) : m_msg(std::move(msg)) {}
+                std::string_view message() const { return m_msg; }
             private:
                 std::string m_msg;
                 // TODO:  source file line number
@@ -62,12 +63,12 @@ class parser {
             };
         }
 
-        static std::unexpected<error_t> error(error_t const &e) {
-            return std::unexpected<error_t>{e};
-        }
-
-        static std::unexpected<error_t> error(error_t &&e) {
-            return std::unexpected<error_t>{std::move(e)};
+        // MOVE ONLY!
+        // This takes the error_t from an expected<T> and returns it in a way
+        // that can be used in create or assign into an expected<U>.
+        template <typename T>
+        static std::unexpected<error_t> error_of(expected<T> &&e) {
+            return std::unexpected<error_t>{std::move(e).error()};
         }
 
         template <typename... Args>

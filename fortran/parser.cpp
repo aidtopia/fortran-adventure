@@ -39,22 +39,21 @@ parser::expected<program> parser::parse_files(
         sources.push_back(source);
     }
     auto stream = std::stringstream{std::move(buffer)};
-    auto const parsed = parse_stream(stream);
-    if (!parsed.has_value()) return error(parsed.error());
-
-    auto program = parsed.value();
-    program.set_source_files(sources);
+    auto parsed = parse_stream(stream);
+    if (!parsed) return error_of(std::move(parsed));
+    auto main_program = std::move(parsed).value();
+    main_program.set_source_files(sources);
 
     // If the program wasn't given a name, use the first source file's name.
-    if (program.unit_name().empty()) {
+    if (main_program.unit_name().empty()) {
         auto const &first = paths.front();
         if (first.has_stem()) {
             auto const stem = to_upper_ascii(first.stem().string());
             auto const name = symbol_name{stem};
-            program.set_unit_name(name);
+            main_program.set_unit_name(name);
         }
     }
-    return program;
+    return main_program;
 }
 
 parser::expected<program> parser::parse_stream(std::istream &in) {
@@ -73,12 +72,12 @@ parser::expected<program> parser::parse_statements() {
     }
     // We do not call end_program here.  That was done when the END statement of
     // the program was reached.  And there were probably subprograms after that.
-    return m_program;
+    return std::move(m_program);
 }
 
 parser::expected<statement_t> parser::parse_full_statement() {
-    auto const number = parse_statement_number_field();
-    if (!number.has_value()) return error(number.error());
+    auto number = parse_statement_number_field();
+    if (!number) return error_of(std::move(number));
     m_statement_number = number.value();
     crush_statement(m_statement);
     begin_statement_field();
@@ -121,16 +120,17 @@ parser::parse_statement(statement_number_t number) {
     auto kw = match_assignment_statement() ?
         keyword::assignment : keyword::unknown;
     if (kw == keyword::unknown) {
-        auto const keyword = parse_keyword();
-        if (!keyword.has_value()) return error(keyword.error());
+        auto keyword = parse_keyword();
+        if (!keyword) return error_of(std::move(keyword));
         kw = keyword.value();
     }
     assert(kw != keyword::unknown);
-    auto const statement = parse_identified_statement(kw, number);
-    if (!statement.has_value()) return error(statement.error());
-    auto const stmt = statement.value();
-    if (stmt != nullptr) stmt->set_statement_number(number);
-    return stmt;
+    auto statement = parse_identified_statement(kw, number);
+    if (!statement) return error_of(std::move(statement));
+    if (statement.value() != nullptr) {
+        statement.value()->set_statement_number(number);
+    }
+    return std::move(statement).value();
 }
 
 parser::expected<statement_t>
@@ -255,8 +255,8 @@ parser::expected<statement_t> parser::parse_program() {
 parser::expected<statement_t> parser::parse_function(datatype type) {
     auto const name = parse_identifier();
     if (name.empty()) return error("FUNCTION requires a name");
-    auto const params = parse_parameter_list();
-    if (!params.has_value()) return error(params.error());
+    auto params = parse_parameter_list();
+    if (!params) return error_of(std::move(params));
     if (params.value().empty()) {
         return error("FUNCTION {} must have at least one parameter", name);
     }
@@ -290,9 +290,9 @@ parser::expected<statement_t> parser::parse_subroutine() {
     auto params = parameter_list_t{};
     if (match('(')) {
         // But if it does have an opening parenthesis, there are parameters.
-        auto const param_list = parse_parameter_list();
-        if (!param_list.has_value()) return error(param_list.error());
-        params = param_list.value();
+        auto param_list = parse_parameter_list();
+        if (!param_list) return error_of(std::move(param_list));
+        params = std::move(param_list).value();
     }
 
     if (!at_eol()) return error("unexpected token after SUBROUTINE statement");
@@ -335,8 +335,8 @@ parser::expected<statement_t> parser::parse_end() {
 
 parser::expected<statement_t>
 parser::parse_statement_function_definition(symbol_name const &name) {
-    auto const parameters = parse_parameter_list();
-    if (!parameters.has_value()) return error(parameters.error());
+    auto parameters = parse_parameter_list();
+    if (!parameters) return error_of(std::move(parameters));
     if (parameters.value().empty()) {
         return error("statement function {} requires at least one parameter",
                      name);
@@ -344,9 +344,9 @@ parser::parse_statement_function_definition(symbol_name const &name) {
     if (!accept('=')) {
         return error("expected '=' in statement function definition");
     }
-    auto const definition =
+    auto definition =
         parse_statement_function_expression(parameters.value());
-    if (!definition.has_value()) return error(definition.error());
+    if (!definition) return error_of(std::move(definition));
     if (!at_eol()) {
         return error("unexpected token after statement function definition");
     }
@@ -360,7 +360,7 @@ parser::parse_statement_function_definition(symbol_name const &name) {
 
     // Can we get away with making these C preprocessor macros?
     return make<definition_statement>(
-        name, parameters.value(), definition.value());
+        name, std::move(parameters).value(), std::move(definition).value());
 }
 
 parser::expected<statement_t> parser::parse_common() {
@@ -409,10 +409,10 @@ parser::expected<statement_t> parser::parse_common() {
 
 parser::expected<statement_t> parser::parse_data() {
     do {
-        auto const variable_list = parse_variable_list();
-        if (!variable_list.has_value()) return error(variable_list.error());
-        auto const data_list = parse_data_list();
-        if (!data_list.has_value()) return error(data_list.error());
+        auto variable_list = parse_variable_list();
+        if (!variable_list) return error_of(std::move(variable_list));
+        auto data_list = parse_data_list();
+        if (!data_list) return error_of(std::move(data_list));
 
         // Now match up the variables with the data values.
         auto data_iter = data_list.value().begin();
@@ -521,10 +521,10 @@ parser::expected<statement_t> parser::parse_format(statement_number_t number) {
         return error("FORMAT requires a statement number");
     }
 
-    auto const fields = parse_field_list();
-    if (!fields.has_value()) return error(fields.error());
+    auto fields = parse_field_list();
+    if (!fields) return error_of(std::move(fields));
 
-    m_current_unit->add_format(number, fields.value());
+    m_current_unit->add_format(number, std::move(fields).value());
     if (!at_eol()) return error("unexpected token after FORMAT statement");
     return nullptr;
 }
@@ -538,8 +538,8 @@ parser::expected<statement_t> parser::parse_implicit() {
         if (type == datatype::unknown) {
             return error("IMPLICIT supports only INTEGER and LOGICAL");
         }
-        auto const prefixes = parse_implicit_prefixes();
-        if (!prefixes.has_value()) return error(prefixes.error());
+        auto prefixes = parse_implicit_prefixes();
+        if (!prefixes) return error_of(std::move(prefixes));
         for (auto const ch : prefixes.value()) {
             m_current_unit->set_implicit_type(ch, type);
         }
@@ -622,14 +622,14 @@ parser::expected<statement_t> parser::parse_assignment() {
         if (symbol.kind == symbolkind::subprogram) {
             return error("did you mean to CALL {}?", name);
         }
-        auto const indices = parse_argument_list();
-        if (!indices.has_value()) return error(indices.error());
+        auto indices = parse_argument_list();
+        if (!indices) return error_of(std::move(indices));
         if (indices.value().size() != symbol.shape.size()) {
             return error("wrong number of indices for {}", name);
         }
         lvalue =
             std::make_shared<array_index_node>(name, symbol.shape,
-                                               indices.value());
+                                               std::move(indices).value());
     } else {
         lvalue = std::make_shared<variable_node>(name);
     }
@@ -644,36 +644,35 @@ parser::expected<statement_t> parser::parse_assignment() {
         m_current_unit->update_symbol(symbol);
     }
 
-    auto const rhs = parse_expression();
-    if (!rhs.has_value()) return error(rhs.error());
+    auto rhs = parse_expression();
+    if (!rhs) return error_of(std::move(rhs));
 
     if (!at_eol()) return error("unexpected token after assignment");
 
-    return make<assignment_statement>(lvalue, rhs.value());
+    return make<assignment_statement>(lvalue, std::move(rhs).value());
 }
 
 parser::expected<statement_t> parser::parse_accept() {
     auto const unit = std::make_shared<constant_node>(0);
-    auto const f = parse_statement_number();
-    if (!f.has_value()) return error(f.error());
-    auto const format = f.value();
+    auto f = parse_statement_number();
+    if (!f) return error_of(std::move(f));
+    auto format = std::move(f).value();
 
     auto io_list = io_list_t{};
     if (accept(',')) {
-        auto const list = parse_io_list();
-        if (!list.has_value()) return error(list.error());
-        io_list = list.value();
+        auto list = parse_io_list();
+        if (!list) return error_of(std::move(list));
+        io_list = std::move(list).value();
     }
     // Re-using read_statement with a special unit number.
-    return make<read_statement>(unit, format, io_list);
+    return make<read_statement>(unit, std::move(format), std::move(io_list));
 }
 
 parser::expected<statement_t> parser::parse_call() {
     auto const name = parse_identifier();
     if (name.empty()) return error("CALL requires a subprogram");
-    auto const arguments =
-        match('(') ? parse_argument_list() : argument_list_t{};
-    if (!arguments.has_value()) return error(arguments.error());
+    auto arguments = match('(') ? parse_argument_list() : argument_list_t{};
+    if (!arguments) return error_of(std::move(arguments));
     if (!at_eol()) return error("unexpected token after CALL statement");
 
     auto symbol = m_current_unit->find_symbol(name);
@@ -690,9 +689,9 @@ parser::expected<statement_t> parser::parse_call() {
             if (arguments.value().size() != symbol.index) {
                 return error("wrong number of arguments in CALL of {}", name);
             }
-            return make<call_statement>(name, arguments.value());
+            return make<call_statement>(name, std::move(arguments).value());
         case symbolkind::argument:
-            return make<indirect_call_statement>(name, arguments.value());
+            return make<indirect_call_statement>(name, std::move(arguments).value());
         default:
             break;
     }
@@ -705,21 +704,22 @@ parser::expected<statement_t> parser::parse_continue() {
 }
 
 parser::expected<statement_t> parser::parse_do() {
-    auto const ends_at = parse_statement_number();
-    if (!ends_at.has_value()) return error(ends_at.error());
-    auto const control = parse_index_control();
-    if (!control.has_value()) return error(control.error());
+    auto ends_at = parse_statement_number();
+    if (!ends_at) return error_of(std::move(ends_at));
+    auto control = parse_index_control();
+    if (!control) return error_of(std::move(control));
     if (!at_eol()) return error("unexpected token after DO statement");
 
-    auto const loop = std::make_shared<do_statement>(control.value());
+    auto const loop =
+        std::make_shared<do_statement>(std::move(control).value());
     while (next_statement()) {
-        auto const stmt = parse_full_statement();
-        if (!stmt.has_value()) return error(stmt.error());
-        if (stmt.value() != nullptr) loop->add(stmt.value());
+        auto stmt = parse_full_statement();
+        if (!stmt) return error_of(std::move(stmt));
+        if (stmt.value() != nullptr) loop->add(std::move(stmt).value());
         if (m_statement_number == ends_at.value()) return loop;
     }
     return error("expected statement number {} at end of loop body",
-                 ends_at.value());
+                 std::move(ends_at).value());
 }
 
 parser::expected<statement_t> parser::parse_goto() {
@@ -732,60 +732,62 @@ parser::expected<statement_t> parser::parse_goto() {
 }
 
 parser::expected<statement_t> parser::parse_unconditional_goto() {
-    auto const target = parse_statement_number();
-    if (!target.has_value()) return error(target.error());
+    auto target = parse_statement_number();
+    if (!target) return error_of(std::move(target));
     if (!at_eol()) return error("unexpected tokens after unconditional GOTO");
     add_label(target.value());
-    return make<goto_statement>(target.value());
+    return make<goto_statement>(std::move(target).value());
 }
 
 parser::expected<statement_t> parser::parse_computed_goto() {
     if (!accept('(')) return error("bug parsing computed GOTO statement");
     auto targets = std::vector<statement_number_t>{};
     do {
-        auto const target = parse_statement_number();
-        if (!target.has_value()) return error(target.error());
-        targets.push_back(target.value());
+        auto target = parse_statement_number();
+        if (!target) return error_of(std::move(target));
         add_label(target.value());
+        targets.push_back(std::move(target).value());
     } while (accept(','));
     if (!accept(')')) return error("missing ')' in computed GOTO");
     accept(',');  // Adventure (sometimes?) omits this comma.
-    auto const expr = parse_expression();
-    if (!expr.has_value()) return error(expr.error());
+    auto expr = parse_expression();
+    if (!expr) return error_of(std::move(expr));
     if (!at_eol()) return error("syntax error in computed GOTO");
-    return make<computed_goto_statement>(targets, expr.value());
+    return make<computed_goto_statement>(targets, std::move(expr).value());
 }
 
 parser::expected<statement_t> parser::parse_if() {
     if (!accept('(')) return error("expected parenthesized condition in IF");
-    auto const condition = parse_expression();
-    if (!condition.has_value()) return error(condition.error());
+    auto condition = parse_expression();
+    if (!condition) return error_of(std::move(condition));
     if (!accept(')')) return error("missing ')' after IF condition");
     if (match_digit()) {
-        auto const nega = parse_statement_number();
-        if (!nega.has_value()) return error(nega.error());
+        auto nega = parse_statement_number();
+        if (!nega) return error_of(std::move(nega));
         if (!accept(',')) return error("expected ',' in numeric IF statement");
-        auto const zero = parse_statement_number();
-        if (!zero.has_value()) return error(zero.error());
+        auto zero = parse_statement_number();
+        if (!zero) return error_of(std::move(zero));
         if (!accept(',')) return error("expected ',' in numeric IF statement");
-        auto const posi = parse_statement_number();
-        if (!posi.has_value()) return error(posi.error());
+        auto posi = parse_statement_number();
+        if (!posi) return error_of(std::move(posi));
         if (!at_eol()) return error("unexpected token after numeric IF");
         add_label(nega.value());
         add_label(zero.value());
         add_label(posi.value());
         return make<numeric_if_statement>(
-            condition.value(), nega.value(), zero.value(), posi.value());
+            std::move(condition).value(), std::move(nega).value(),
+            std::move(zero).value(), std::move(posi).value());
     }
-    auto const then = parse_statement(no_statement_number);
-    if (!then.has_value()) return error(then.error());
+    auto then = parse_statement(no_statement_number);
+    if (!then) return error_of(std::move(then));
     if (then.value() == nullptr) {
         return error("missing then clause of logical IF statement");
     }
     // Technically, there are a handful of statement types you cannot use as the
     // then-clause of an IF statement: IF, DO, non-executable statements, etc.
     // But that's not worth checking now.
-    return make<if_statement>(condition.value(), then.value());
+    return make<if_statement>(
+        std::move(condition).value(), std::move(then).value());
 }
 
 parser::expected<statement_t> parser::parse_open() {
@@ -801,8 +803,8 @@ parser::expected<statement_t> parser::parse_open() {
     auto const bookmark = position();
     auto const unitkey = parse_open_keyword();
     if (unitkey.value() != openkey::UNIT || !accept('=')) m_it = bookmark;
-    auto const unit = parse_expression();
-    if (!unit.has_value()) return error(unit.error());
+    auto unit = parse_expression();
+    if (!unit) return error_of(std::move(unit));
     auto access = std::string{"SEQUENTIAL"};
     auto file_name = std::filesystem::path{};
     while (accept(',')) {
@@ -812,15 +814,15 @@ parser::expected<statement_t> parser::parse_open() {
         }
         switch (key.value()) {
             case openkey::ACCESS: {
-                auto const param = parse_literal();
-                if (!param.has_value()) return error(param.error());
-                access = param.value();
+                auto param = parse_literal();
+                if (!param) return error_of(std::move(param));
+                access = std::move(param).value();
                 break;
             }
             case openkey::FILE: {
-                auto const param = parse_literal();
-                if (!param.has_value()) return error(param.error());
-                file_name = std::filesystem::path{param.value()};
+                auto param = parse_literal();
+                if (!param) return error_of(std::move(param));
+                file_name = std::filesystem::path{std::move(param).value()};
                 break;
             }
             case openkey::unknown: [[fallthrough]];
@@ -839,18 +841,18 @@ parser::expected<statement_t> parser::parse_open() {
         // Documentation says a default name will be provided, but c'mon!
         return error("OPEN statement didn't specify a file name");
     }
-    return make<open_statement>(unit.value(), file_name);
+    return make<open_statement>(std::move(unit).value(), file_name);
 }
 
 parser::expected<statement_t> parser::parse_pause() {
     auto message = std::string("TYPE G TO CONTINUE OR X TO EXIT");
     if (match('\'')) {
-        auto const text = parse_literal();
-        if (!text.has_value()) return error(text.error());
-        message = text.value();
+        auto text = parse_literal();
+        if (!text) return error_of(std::move(text));
+        message = std::move(text).value();
     } else if (match_digit(8)) {
-        auto const number = parse_integer(8, 6);
-        if (!number.has_value()) return error(number.error());
+        auto number = parse_integer(8, 6);
+        if (!number) return error_of(std::move(number));
         message = std::format("{:o}", number.value());
     }
     if (!at_eol()) return error("unexpected token after PAUSE statement");
@@ -861,27 +863,27 @@ parser::expected<statement_t> parser::parse_read() {
     auto unit = expression_t{};
     auto format = statement_number_t{};
     if (accept('(')) {
-        auto const u = parse_expression();
-        if (!u.has_value()) return error(u.error());
-        unit = u.value();
+        auto u = parse_expression();
+        if (!u) return error_of(std::move(u));
+        unit = std::move(u).value();
         if (accept(',')) {
-            auto const f = parse_statement_number();
-            if (!f.has_value()) return error(f.error());
-            format = f.value();
+            auto f = parse_statement_number();
+            if (!f) return error_of(std::move(f));
+            format = std::move(f).value();
         }
         if (!accept(')')) return error("expected ')' in READ statement");
     } else {
-        auto const f = parse_statement_number();
-        if (!f.has_value()) return error(f.error());
-        format = f.value();
+        auto f = parse_statement_number();
+        if (!f) return error_of(std::move(f));
+        format = std::move(f).value();
     }
 
-    auto const list = parse_io_list();
-    if (!list.has_value()) return error(list.error());
-    auto const io_list = list.value();
+    auto list = parse_io_list();
+    if (!list) return error_of(std::move(list));
+    auto const io_list = std::move(list).value();
     if (!at_eol()) return error("unexpected token after READ statement");
 
-    return make<read_statement>(unit, format, io_list);
+    return make<read_statement>(std::move(unit), format, std::move(io_list));
 }
 
 parser::expected<statement_t> parser::parse_return() {
@@ -902,62 +904,64 @@ parser::expected<statement_t> parser::parse_stop() {
 }
 
 parser::expected<statement_t> parser::parse_type() {
-    auto const format = parse_statement_number();
-    if (!format.has_value()) return error(format.error());
+    auto format = parse_statement_number();
+    if (!format) return error_of(std::move(format));
     auto io_list = io_list_t{};
     if (accept(',')) {
-        auto const list = parse_io_list();
-        if (!list.has_value()) return error(list.error());
-        io_list = list.value();
+        auto list = parse_io_list();
+        if (!list) return error_of(std::move(list));
+        io_list = std::move(list).value();
     }
     if (!at_eol()) return error("unexpected token after TYPE statement");
-    return make<type_statement>(format.value(), io_list);
+    return make<type_statement>(std::move(format).value(), std::move(io_list));
 }
 
 parser::expected<expression_t> parser::parse_expression() {
     auto alternative = parse_alternative_expression();
-    if (!alternative.has_value()) return error(alternative.error());
-    auto lhs = alternative.value();
+    if (!alternative) return error_of(std::move(alternative));
+    auto lhs = std::move(alternative).value();
     for (;;) {
         auto const op = accept(operator_t::logic_xor) ? operator_t::logic_xor :
                         accept(operator_t::logic_eqv) ? operator_t::logic_eqv
                                                       : operator_t::none;
         if (op == operator_t::none) break;
-        auto const rhs = parse_alternative_expression();
-        if (!rhs.has_value()) return error(rhs.error());
-        lhs = std::make_shared<binary_node>(lhs, op, rhs.value());
+        auto rhs = parse_alternative_expression();
+        if (!rhs) return error_of(std::move(rhs));
+        lhs = std::make_shared<binary_node>(lhs, op, std::move(rhs).value());
     }
-    return lhs;
+    return std::move(lhs);
 }
 
 parser::expected<expression_t> parser::parse_alternative_expression() {
-    auto const compound = parse_compound_expression();
-    if (!compound.has_value()) return error(compound.error());
-    auto lhs = compound.value();
+    auto compound = parse_compound_expression();
+    if (!compound) return error_of(std::move(compound));
+    auto lhs = std::move(compound).value();
     while (accept(operator_t::logic_or)) {
-        auto const rhs = parse_compound_expression();
-        if (!rhs.has_value()) return error(rhs.error());
-        lhs = std::make_shared<binary_node>(lhs, operator_t::logic_or, rhs.value());
+        auto rhs = parse_compound_expression();
+        if (!rhs) return error_of(std::move(rhs));
+        lhs = std::make_shared<binary_node>(
+            lhs, operator_t::logic_or, std::move(rhs).value());
     }
-    return lhs;
+    return std::move(lhs);
 }
 
 parser::expected<expression_t> parser::parse_compound_expression() {
-    auto const comparison = parse_comparison();
-    if (!comparison.has_value()) return error(comparison.error());
-    auto lhs = comparison.value();
+    auto comparison = parse_comparison();
+    if (!comparison) return error_of(std::move(comparison));
+    auto lhs = std::move(comparison).value();
     while (accept(operator_t::logic_and)) {
-        auto const rhs = parse_comparison();
-        if (!rhs.has_value()) return error(rhs.error());
-        lhs = std::make_shared<binary_node>(lhs, operator_t::logic_and, rhs.value());
+        auto rhs = parse_comparison();
+        if (!rhs) return error_of(std::move(rhs));
+        lhs = std::make_shared<binary_node>(
+            lhs, operator_t::logic_and, std::move(rhs).value());
     }
-    return lhs;
+    return std::move(lhs);
 }
 
 parser::expected<expression_t> parser::parse_comparison() {
-    auto const lhs = parse_arithmetic_expression();
-    if (!lhs.has_value()) return error(lhs.error());
-    if (!match('.')) return lhs;
+    auto lhs = parse_arithmetic_expression();
+    if (!lhs) return error_of(std::move(lhs));
+    if (!match('.')) return std::move(lhs);
     auto const bookmark = position();
     auto const op = parse_operator().value_or(operator_t::none);
     if (op != operator_t::compare_eq && op != operator_t::compare_ne  &&
@@ -965,52 +969,57 @@ parser::expected<expression_t> parser::parse_comparison() {
         op != operator_t::compare_lt && op != operator_t::compare_lte
     ) {
         m_it = bookmark;
-        return lhs;
+        return std::move(lhs).value();
     }
-    auto const rhs = parse_arithmetic_expression();
-    if (!rhs.has_value()) return error(rhs.error());
-    return std::make_shared<binary_node>(lhs.value(), op, rhs.value());
+    auto rhs = parse_arithmetic_expression();
+    if (!rhs) return error_of(std::move(rhs));
+    return std::make_shared<binary_node>(
+        std::move(lhs).value(), op, std::move(rhs).value());
 }
 
 parser::expected<expression_t> parser::parse_arithmetic_expression() {
-    auto const term = parse_term();
-    if (!term.has_value()) return error(term.error());
-    auto lhs = term.value();
+    auto term = parse_term();
+    if (!term) return error_of(std::move(term));
+    auto lhs = std::move(term).value();
     while (match('+') || match('-')) {
         auto const op = parse_operator().value_or(operator_t::none);
-        auto const rhs = parse_term();
-        if (!rhs.has_value()) return error(rhs.error());
-        lhs = std::make_shared<binary_node>(lhs, op, rhs.value());
+        auto rhs = parse_term();
+        if (!rhs) return error_of(std::move(rhs));
+        lhs = std::make_shared<binary_node>(lhs, op, std::move(rhs).value());
     }
-    return lhs;
+    return std::move(lhs);
 }
 
 parser::expected<expression_t> parser::parse_term() {
-    auto const factor = parse_factor();
-    if (!factor.has_value()) return error(factor.error());
-    auto lhs = factor.value();
+    auto factor = parse_factor();
+    if (!factor) return error_of(std::move(factor));
+    auto lhs = std::move(factor).value();
     while (match('*') || match('/')) {
         auto const op = parse_operator().value_or(operator_t::none);
         if (op == operator_t::exponentiate) {
             return error("exponentiation is not supported");
         }
-        auto const rhs = parse_factor();
-        if (!rhs.has_value()) return error(rhs.error());
-        lhs = std::make_shared<binary_node>(lhs, op, rhs.value());
+        auto rhs = parse_factor();
+        if (!rhs) return error_of(std::move(rhs));
+        lhs = std::make_shared<binary_node>(lhs, op, std::move(rhs).value());
     }
-    return lhs;
+    return std::move(lhs);
 }
 
 parser::expected<expression_t> parser::parse_factor() {
     if (accept(operator_t::logic_not)) {
-        auto const factor = parse_factor();
-        if (!factor.has_value()) return error(factor.error());
-        return std::make_shared<unary_node>(operator_t::logic_not, factor.value());
+        auto factor = parse_factor();
+        if (!factor) return error_of(std::move(factor));
+        return
+            std::make_shared<unary_node>(
+                operator_t::logic_not, std::move(factor).value());
     }
     if (accept('-')) {
-        auto const factor = parse_factor();
-        if (!factor.has_value()) return error(factor.error());
-        return std::make_shared<unary_node>(operator_t::negate, factor.value());
+        auto factor = parse_factor();
+        if (!factor) return error_of(std::move(factor));
+        return
+            std::make_shared<unary_node>(
+                operator_t::negate, std::move(factor).value());
     }
     while (accept('+')) { /* unnecessary unary '+' */ }
     return parse_atom();
@@ -1018,10 +1027,10 @@ parser::expected<expression_t> parser::parse_factor() {
 
 parser::expected<expression_t> parser::parse_atom() {
     if (accept('(')) {
-        auto const expr = parse_expression();
-        if (!expr.has_value()) return error(expr.error());
+        auto expr = parse_expression();
+        if (!expr) return error_of(std::move(expr));
         if (!accept(')')) return error("expected ')' in expression");
-        return expr.value();
+        return std::move(expr).value();
     }
     if (match_letter()) {
         auto const name = parse_identifier();
@@ -1038,9 +1047,9 @@ parser::expected<expression_t> parser::parse_atom() {
             return std::make_shared<variable_node>(name);
         }
 
-        auto const arguments = parse_argument_list();
-        if (!arguments.has_value()) return error(arguments.error());
-        auto const args = arguments.value();
+        auto arguments = parse_argument_list();
+        if (!arguments) return error_of(std::move(arguments));
+        auto const args = std::move(arguments).value();
         if (!symbol.shape.empty()) {
             if (args.size() != symbol.shape.size()) {
                 return error("array has {} dimension(s) but only {} index(es) "
@@ -1069,9 +1078,9 @@ parser::expected<expression_t> parser::parse_atom() {
         }
         return error("syntax error in expression near '{}'", name);
     }
-    auto const constant = parse_constant();
-    if (!constant.has_value()) return error(constant.error());
-    return std::make_shared<constant_node>(constant.value().value);
+    auto constant = parse_constant();
+    if (!constant) return error_of(std::move(constant));
+    return std::make_shared<constant_node>(std::move(constant).value().value);
 }
 
 parser::expected<expression_t> parser::parse_statement_function_expression(
@@ -1098,30 +1107,30 @@ array_shape parser::parse_array_shape() {
 }
 
 parser::expected<dimension> parser::parse_one_dimension() {
-    auto const limit1 = parse_integer_constant();
-    if (!limit1.has_value()) return error(limit1.error());
+    auto limit1 = parse_integer_constant();
+    if (!limit1) return error_of(std::move(limit1));
     if (accept('/')) {
-        auto const limit2 = parse_integer_constant();
-        if (!limit2.has_value()) return error(limit2.error());
+        auto limit2 = parse_integer_constant();
+        if (!limit2) return error_of(std::move(limit2));
         if (limit2.value() < limit1.value()) {
             return error("maximum dimension {} cannot be less than minimum {}",
                          limit2.value(), limit1.value());
         }
-        return dimension{limit1.value(), limit2.value()};
+        return dimension{std::move(limit1).value(), std::move(limit2).value()};
     }
     if (limit1.value() < 1) {
         return error("maximum dimension {} is less than the default minimum 1",
                      limit1.value());
     }
-    return dimension{1, limit1.value()};
+    return dimension{1, std::move(limit1).value()};
 }
 
 parser::expected<io_list_t> parser::parse_io_list() {
     auto list = io_list_t{};
     do {
-        auto const item = parse_io_list_item();
-        if (!item.has_value()) return error(item.error());
-        list.push_back(item.value());
+        auto item = parse_io_list_item();
+        if (!item) return error_of(std::move(item));
+        list.push_back(std::move(item).value());
     } while (accept(','));
     return list;
 }
@@ -1134,8 +1143,8 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         if (symbol.shape.empty()) {
             return error("expected array name, saw '{}'", array);
         }
-        auto const subscripts = parse_argument_list();
-        if (!subscripts.has_value()) return error(subscripts.error());
+        auto subscripts = parse_argument_list();
+        if (!subscripts) return error_of(std::move(subscripts));
         if (subscripts.value().size() != symbol.shape.size()) {
             return error("expected {} subscripts for '{}'",
                          symbol.shape.size(), array);
@@ -1144,10 +1153,11 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
             return error("missing ',' separating the indexed expression from "
                          "the index control");
         }
-        auto const control = parse_index_control();
-        if (!control.has_value()) return error(control.error());
+        auto control = parse_index_control();
+        if (!control) return error_of(std::move(control));
         if (!accept(')')) return error("missing ')' after index control");
-        return io_list_item{array, subscripts.value(), control.value()};
+        return io_list_item{array, std::move(subscripts).value(),
+                            std::move(control).value()};
     }
 
     auto const name = parse_identifier();
@@ -1167,9 +1177,9 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
     
     if (symbol.shape.empty()) return io_list_item{name};
     if (match('(')) {
-        auto const indices = parse_argument_list();
-        if (!indices.has_value()) return error(indices.error());
-        return io_list_item{name, indices.value()};
+        auto indices = parse_argument_list();
+        if (!indices) return error_of(std::move(indices));
+        return io_list_item{name, std::move(indices).value()};
     }
 
     // Implicitly apply to the entire array.
@@ -1209,15 +1219,16 @@ parser::expected<index_control_t> parser::parse_index_control() {
     m_current_unit->update_symbol(symbol);
 
     if (!accept('=')) return error("expected '=' in index control");
-    auto const init = parse_expression();
-    if (!init.has_value()) return error(init.error());
+    auto init = parse_expression();
+    if (!init) return error_of(std::move(init));
     if (!accept(',')) return error("expected ',' in index control");
-    auto const limit = parse_expression();
-    if (!limit.has_value()) return error(limit.error());
-    auto const step =
+    auto limit = parse_expression();
+    if (!limit) return error_of(std::move(limit));
+    auto step =
         accept(',') ? parse_expression() : std::make_shared<constant_node>(1);
-    if (!step.has_value()) return error(step.error());
-    return index_control_t{index, init.value(), limit.value(), step.value()};
+    if (!step) return error_of(std::move(step));
+    return index_control_t{index, std::move(init).value(),
+                           std::move(limit).value(), std::move(step).value()};
 }
 
 parser::expected<data_list_t> parser::parse_data_list() {
@@ -1225,7 +1236,7 @@ parser::expected<data_list_t> parser::parse_data_list() {
     auto data_list = data_list_t{};
     do {
         auto item = parse_constant();
-        if (!item.has_value()) return error(item.error());
+        if (!item) return error_of(std::move(item));
         if (accept('*') && item.value().type == datatype::INTEGER) {
             auto const repeat_count = item.value().value;
             if (repeat_count < 1) {
@@ -1233,7 +1244,7 @@ parser::expected<data_list_t> parser::parse_data_list() {
                              repeat_count);
             }
             item = parse_constant();
-            if (!item.has_value()) return error(item.error());
+            if (!item) return error_of(std::move(item));
             data_list.emplace_back(item.value().value, item.value().type,
                                    repeat_count);
         } else {
@@ -1297,9 +1308,9 @@ parser::expected<argument_list_t> parser::parse_argument_list() {
     auto arguments = argument_list_t{};
     if (accept(')')) return arguments;  // no arguments
     do {
-        auto const arg = parse_argument();
-        if (!arg.has_value()) return error(arg.error());
-        arguments.push_back(arg.value());
+        auto arg = parse_argument();
+        if (!arg) return error_of(std::move(arg));
+        arguments.push_back(std::move(arg).value());
     } while (accept(','));
     if (!accept(')')) return error("expected ')' at end of argument list");
     return arguments;
@@ -1342,9 +1353,9 @@ parser::expected<parser::keyword> parser::parse_keyword() {
 parser::expected<variable_list_t> parser::parse_variable_list() {
     auto list = variable_list_t{};
     do {
-        auto const item = parse_variable_list_item();
-        if (!item.has_value()) return error(item.error());
-        list.push_back(item.value());
+        auto item = parse_variable_list_item();
+        if (!item) return error_of(std::move(item));
+        list.push_back(std::move(item).value());
     } while (accept(','));
     return list;
 }
@@ -1357,8 +1368,8 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
         if (symbol.shape.empty()) {
             return error("expected array name, saw '{}'", array);
         }
-        auto const subscripts = parse_subscript_list();
-        if (!subscripts.has_value()) return error(subscripts.error());
+        auto subscripts = parse_subscript_list();
+        if (!subscripts) return error_of(std::move(subscripts));
         if (subscripts.value().size() != symbol.shape.size()) {
             return error("expected {} subscripts for '{}'",
                          symbol.shape.size(), array);
@@ -1367,10 +1378,11 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
             return error("missing ',' separating the indexed expression from "
                          "the index control");
         }
-        auto const control = parse_constant_index_control();
-        if (!control.has_value()) return error(control.error());
+        auto control = parse_constant_index_control();
+        if (!control) return error_of(std::move(control));
         if (!accept(')')) return error("missing ')' after index control");
-        return variable_list_item_t{array, subscripts.value(), control.value()};
+        return variable_list_item_t{array, std::move(subscripts).value(),
+                                    std::move(control).value()};
     }
 
     auto const name = parse_identifier();
@@ -1390,9 +1402,9 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
     
     if (symbol.shape.empty()) return variable_list_item_t{name};
     if (match('(')) {
-        auto const subscripts = parse_subscript_list();
-        if (!subscripts.has_value()) return error(subscripts.error());
-        return variable_list_item_t{name, subscripts.value()};
+        auto subscripts = parse_subscript_list();
+        if (!subscripts) return error_of(std::move(subscripts));
+        return variable_list_item_t{name, std::move(subscripts).value()};
     }
 
     // Implicitly apply to the entire array.
@@ -1434,23 +1446,23 @@ parser::parse_constant_index_control() {
     m_current_unit->update_symbol(symbol);
 
     if (!accept('=')) return error("expected '=' in index control");
-    auto const k0 = parse_constant();
-    if (!k0.has_value()) return error(k0.error());
+    auto k0 = parse_constant();
+    if (!k0) return error_of(std::move(k0));
     if (k0.value().type != datatype::INTEGER) {
         return error("initial value for induction must be an INTEGER constant");
     }
     auto const init = k0.value().value;
     if (!accept(',')) return error("expected ',' in index control");
-    auto const k1 = parse_constant();
-    if (!k1.has_value()) return error(k1.error());
+    auto k1 = parse_constant();
+    if (!k1) return error_of(std::move(k1));
     if (k1.value().type != datatype::INTEGER) {
         return error("final value for induction must be an INTEGER constant");
     }
     auto const limit = k1.value().value;
     auto step = machine_word_t{1};
     if (accept(',')) {
-        auto const k2 = parse_constant();
-        if (!k2.has_value()) return error(k2.error());
+        auto k2 = parse_constant();
+        if (!k2) return error_of(std::move(k2));
         if (k2.value().type != datatype::INTEGER) {
             return error("increment for induction must be an INTEGER constant");
         }
@@ -1463,9 +1475,9 @@ parser::expected<subscript_list_t> parser::parse_subscript_list() {
     auto list = subscript_list_t{};
     if (!accept('(')) return error("expected '(' for subscripting");
     do {
-        auto const subscript = parse_subscript();
-        if (!subscript.has_value()) return error(subscript.error());
-        list.push_back(subscript.value());
+        auto subscript = parse_subscript();
+        if (!subscript) return error_of(std::move(subscript));
+        list.push_back(std::move(subscript).value());
     } while (accept(','));
     if (!accept(')')) return error("expected ')' after subscript");
     return list;
@@ -1566,13 +1578,13 @@ parser::expected<constant_t> parser::parse_constant() {
         case '-': case '"':
             return parse_numeric_constant();
         case '\'': {
-            auto const k = parse_literal_constant();
-            if (!k.has_value()) return error(k.error());
+            auto k = parse_literal_constant();
+            if (!k) return error_of(std::move(k));
             return constant_t{k.value(), datatype::LITERAL};
         }
         case '.': case 'T': case 'F': {
-            auto const k = parse_logical_constant();
-            if (!k.has_value()) return error(k.error());
+            auto k = parse_logical_constant();
+            if (!k) return error_of(std::move(k));
             return constant_t{k.value(), datatype::LOGICAL};
         }
     }
@@ -1581,13 +1593,13 @@ parser::expected<constant_t> parser::parse_constant() {
 
 parser::expected<constant_t> parser::parse_numeric_constant() {
     if (accept('"')) {
-        auto const octal = parse_integer(8);
-        if (!octal.has_value()) return error(octal.error());
+        auto octal = parse_integer(8);
+        if (!octal) return error_of(std::move(octal));
         return constant_t{octal.value(), datatype::INTEGER};
     }
-    auto const parsed = parse_integer(10);
-    if (!parsed.has_value()) return error(parsed.error());
-    auto whole = parsed.value();
+    auto parsed = parse_integer(10);
+    if (!parsed) return error_of(std::move(parsed));
+    auto const whole = parsed.value();
     auto const sign = (whole < 0) ? -1.0f : 1.0f;
     auto const bookmark = position();
     if (accept('.') && match_digit()) {
@@ -1614,12 +1626,12 @@ parser::expected<machine_word_t> parser::parse_integer_constant() {
 parser::expected<machine_word_t> parser::parse_literal_constant() {
     // Packs a short character string into a machine word.  Does not handle
     // Hollerith data.
-    auto const text = parse_literal();
-    if (!text.has_value()) return error(text.error());
+    auto text = parse_literal();
+    if (!text) return error_of(std::move(text));
     if (text.value().size() > 5) {
         return error("literal constant cannot exceed 5 characters");
     }
-    return make_literal(text.value());
+    return make_literal(std::move(text).value());
 }
 
 parser::expected<machine_word_t> parser::parse_logical_constant() {
@@ -1734,7 +1746,7 @@ bool parser::begin_subprogram(symbol_name const &name) {
 bool parser::end_subprogram() {
     m_current_unit = nullptr;
     m_program.add_subprogram(std::move(m_subprogram));
-    m_subprogram = unit{};
+    m_subprogram = std::move(unit{});
     m_phase = phase5;
     return true;
 }

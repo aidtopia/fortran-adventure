@@ -13,6 +13,10 @@ class program : public unit {
     public:
         program() {}
         ~program() {}
+        program(program &&rhs) noexcept = default;
+        program &operator=(program &&rhs) noexcept = default;
+        program(program const &rhs) = delete;
+        program &operator=(program const &rhs) = delete;
 
         void set_source_files(std::span<std::filesystem::path> files);
         std::vector<std::filesystem::path> const &get_source_files() const;

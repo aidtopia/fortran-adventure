@@ -87,9 +87,9 @@ std::vector<symbol_info> unit::extract_symbols(
     return symbols;
 }
 
-void unit::add_format(statement_number_t number, field_list_t const &fields) {
+void unit::add_format(statement_number_t number, field_list_t fields) {
     assert(m_formats.find(number) == m_formats.end() && "FORMAT defined twice");
-    m_formats[number] = fields;
+    m_formats[number] = std::move(fields);
 }
 
 void unit::print_symbol_table(std::ostream &out) const {

@@ -28,6 +28,10 @@ class unit {
         explicit unit(symbol_name name = symbol_name{""})
             : m_unit_name(name) {}
         virtual ~unit();
+        unit(unit &&rhs) noexcept = default;
+        unit &operator=(unit &&rhs) noexcept = default;
+        unit(unit const &rhs) = delete;
+        unit &operator=(unit const &rhs) = delete;
 
         // The name of this unit (i.e., the program, subroutine, or function).
         symbol_name unit_name() const { return m_unit_name; }
@@ -60,7 +64,7 @@ class unit {
             std::function<bool (symbol_info const &, symbol_info const &)> sort_by
         ) const;
 
-        void add_format(statement_number_t number, field_list_t const &fields);
+        void add_format(statement_number_t number, field_list_t fields);
         format_table const &formats() const { return m_formats; }
 
         void add_statement(statement_t statement);
