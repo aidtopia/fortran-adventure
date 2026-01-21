@@ -190,7 +190,7 @@ class parser {
         expected<expression_t> parse_arithmetic_function_expression(
             parameter_list_t const &params
         );
-        array_shape parse_array_shape(); // TODO:  Should return expected<array_shape>.
+        expected<array_shape> parse_array_shape();
         expected<dimension> parse_one_dimension();
         expected<io_list_t> parse_io_list();
         expected<io_list_item> parse_io_list_item();

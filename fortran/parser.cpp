@@ -382,10 +382,15 @@ parser::expected<statement_t> parser::parse_common() {
                 symbol.type = m_current_unit->implicit_type(name);
             }
 
-            // Although it's not used by Adventure, a variable in a COMMON
-            // specification may include array dimensions instead of requiring
-            // a separate DIMENSION specification.
-            auto const shape = match('(') ? parse_array_shape() : symbol.shape;
+            auto shape = symbol.shape;
+            if (match('(')) {
+                // Although it's not used by Adventure, a variable in a COMMON
+                // specification may include array dimensions instead of
+                // requiring a separate DIMENSION specification.
+                auto s = parse_array_shape();
+                if (!s) return error_of(std::move(s));
+                shape = s.value();
+            }
             if (symbol.shape != shape) {
                 if (!symbol.shape.empty()) {
                     return
@@ -484,14 +489,14 @@ parser::expected<statement_t> parser::parse_dimension() {
     do {
         auto const variable = parse_identifier();
         if (variable.empty()) return error("missing variable in DIMENSION");
-        auto const shape = parse_array_shape();
-        if (shape.empty()) return error("missing dimensions in DIMENSION");
+        auto shape = parse_array_shape();
+        if (!shape) return error_of(std::move(shape));
         auto symbol = m_current_unit->find_symbol(variable);
-        if (symbol.shape == shape) continue;
+        if (symbol.shape == shape.value()) continue;
         if (!symbol.shape.empty()) {
             return error("attempted to re-dimension {}", variable);
         }
-        symbol.shape = shape;
+        symbol.shape = std::move(shape).value();
         m_current_unit->update_symbol(std::move(symbol));
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after DIMENSION statement");
@@ -1097,16 +1102,15 @@ parser::expected<expression_t> parser::parse_arithmetic_function_expression(
     return definition;
 }
 
-// TODO:  This should return `expected<array_shape>`.
-array_shape parser::parse_array_shape() {
-    if (!accept('(')) return {};
+parser::expected<array_shape> parser::parse_array_shape() {
+    if (!accept('(')) return error("expected array dimensions");
     auto shape = array_shape{};
     do {
         auto d = parse_one_dimension();
-        if (!d.has_value()) return {};
+        if (!d) return error_of(std::move(d));
         shape.push_back(d.value());
     } while (accept(','));
-    if (!(accept(')'))) shape.clear();
+    if (!(accept(')'))) return error("array dimensions missing ')'");
     return shape;
 }
 
