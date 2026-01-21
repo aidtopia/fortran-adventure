@@ -41,10 +41,10 @@ class unit {
         void update_symbol(symbol_info const &symbol);
         void update_symbol(symbol_info &&symbol);
 
-        // Statement function definition parameters are temporary symbols that
+        // Arithmetic function definition parameters are temporary symbols that
         // might shadow an actual symbol in the unit.
-        void add_fsparams(std::span<const symbol_name> names);
-        void remove_fsparams();
+        void add_shadows(std::span<const symbol_name> names);
+        void remove_shadows();
 
         // A shortcut for ensuring the symbol's `referenced` flag is set.
         void mark_symbol_referenced(symbol_name const &name);
@@ -91,6 +91,7 @@ class unit {
             m_comdats[block] = count;
         }
 
+        virtual void mark_referenced();
         virtual void print_symbol_table(std::ostream &out) const;
 
     private:
@@ -118,6 +119,7 @@ class unit {
         comdat_table m_comdats;
         format_table m_formats;
         statement_block m_code;
+        bool m_referenced = false;
 };
 
 }

@@ -79,6 +79,34 @@ namespace {
         return std::string(begin, it);
     }
 
+    static constexpr std::size_t size(symbol_info const &symbol) {
+        switch (symbol.kind) {
+            // Regular variables
+            case symbolkind::local:
+            case symbolkind::common:
+            case symbolkind::argument:
+            case symbolkind::retval:
+                // array_size is poorly named.  Scalars return 1.
+                return array_size(symbol.shape);
+
+            // These don't require program memory
+            case symbolkind::subprogram:
+            case symbolkind::internal:
+            case symbolkind::external:
+            case symbolkind::label:
+                return 0uz;
+
+            // It's weird that the caller is even asking
+            case symbolkind::shadow:
+                assert(false);
+                return 0uz;
+
+            default:
+                assert(!"forget to handle a new symbolkind?");
+                return 0uz;
+        }
+    }
+
     struct builtin_t {
         symbol_name name;
         std::string_view code;
@@ -425,7 +453,7 @@ std::string c_generator::generate_return_value(unit const &u) {
     if (retvals.empty()) return {};
     auto const &retval = retvals.front();
     auto const addr = m_memsize;
-    m_memsize += array_size(retval.shape);
+    m_memsize += size(retval);
     return std::format(" word_t *{} = &memory[{}];  // return value\n",
                        name(retval), addr);
 }
@@ -454,7 +482,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
             add_initializer(block, offset, common.init_data);
         }
         // Its size still matters to the layout, even if it wasn't referenced.
-        offset += array_size(common.shape);
+        offset += size(common);
         // Note that we do NOT bump m_memsize because the space for the common
         // variables is already accounted for by the comdat blocks.
     }
@@ -468,7 +496,7 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     for (auto const &local : locals) {
         result += generate_variable_definition(local, m_memsize);
         add_initializer(local.comdat, m_memsize, local.init_data);
-        m_memsize += array_size(local.shape);
+        m_memsize += size(local);
     }
     return result;
 }
@@ -495,10 +523,13 @@ std::string c_generator::generate_variable_definition(
     }
 }
 
-std::string c_generator::generate_array_definition(symbol_info const &var, machine_word_t offset) {
+std::string c_generator::generate_array_definition(
+    symbol_info const &var,
+    machine_word_t offset
+) {
     auto result =
         std::format(" word_t * const {} = &{}[{}]; // [{}]",
-                    name(var), base(var), offset, array_size(var.shape));
+                    name(var), base(var), offset, size(var));
     if (!var.init_data.empty()) {
         if (var.init_data.size() <= 3) {
             result += std::format(" = {{{}", var.init_data[0]);
@@ -517,7 +548,10 @@ std::string c_generator::generate_array_definition(symbol_info const &var, machi
     return result;
 }
 
-std::string c_generator::generate_scalar_definition(symbol_info const &var, machine_word_t offset) {
+std::string c_generator::generate_scalar_definition(
+    symbol_info const &var,
+    machine_word_t offset
+) {
     auto result =
         std::format(" word_t * const {} = &{}[{}];",
                     name(var), base(var), offset);

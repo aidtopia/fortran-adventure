@@ -84,13 +84,30 @@ int main(int argc, char const *argv[]) {
         }
     }
 
+    // FRONT END ---------------
+
     // Parse the code.
-    auto const parsed = aid::fortran::parser::parse_files(paths);
+    auto parsed = aid::fortran::parser::parse_files(paths);
     if (!parsed.has_value()) {
         std::print(std::cerr, "{}\n", parsed.error().message());
         return EXIT_FAILURE;
     }
-    auto const &program = parsed.value();
+    auto program = std::move(parsed).value();
+
+
+    // MIDDLE END --------------
+    // Here we do "passes" over `program`, shaping it as needed.
+
+    // Determination of what's referenced or not referenced by marking the main
+    // program as referenced, which will recursively mark everything that's
+    // reachable.
+    program.mark_referenced();
+
+    // TODO:  Walk the (referenced parts of) the program to assign addresses
+    // for all fo the variables.
+
+
+    // BACK END ----------------
 
     // Create the target directory beneath the directory that contains the first
     // source file.

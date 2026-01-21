@@ -189,7 +189,7 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::DATA:         return parse_data();
     }
 
-    // Phase 3 is for statement function definitions, which look like
+    // Phase 3 is for arithmetic function definitions, which look like
     // assignments.  Note that if we're here and we get an actual, executable
     // assignment statement, the phase will be advanced.
     if (m_phase == phase3) switch (kw) {
@@ -334,32 +334,31 @@ parser::expected<statement_t> parser::parse_end() {
 }
 
 parser::expected<statement_t>
-parser::parse_statement_function_definition(symbol_name const &name) {
+parser::parse_arithmetic_function_definition(symbol_name const &name) {
     auto parameters = parse_parameter_list();
     if (!parameters) return error_of(std::move(parameters));
     if (parameters.value().empty()) {
-        return error("statement function {} requires at least one parameter",
+        return error("arithmetic function {} requires at least one parameter",
                      name);
     }
     if (!accept('=')) {
-        return error("expected '=' in statement function definition");
+        return error("expected '=' in arithmetic function definition");
     }
     auto definition =
-        parse_statement_function_expression(parameters.value());
+        parse_arithmetic_function_expression(parameters.value());
     if (!definition) return error_of(std::move(definition));
     if (!at_eol()) {
-        return error("unexpected token after statement function definition");
+        return error("unexpected token after arithmetic function definition");
     }
     auto symbol = m_current_unit->find_symbol(name);
-    symbol.kind = symbolkind::subprogram;
+    symbol.kind = symbolkind::internal;
     if (symbol.type == datatype::unknown) {
         symbol.type = m_current_unit->implicit_type(name);
     }
     symbol.index = static_cast<unsigned>(parameters.value().size());
     m_current_unit->update_symbol(symbol);
 
-    // Can we get away with making these C preprocessor macros?
-    return make<definition_statement>(
+    return make<arithmetic_function_definition_statement>(
         name, std::move(parameters).value(), std::move(definition).value());
 }
 
@@ -453,9 +452,8 @@ parser::expected<statement_t> parser::parse_data() {
                 auto const upper = std::max(control.init, control.limit);
                 auto const &subscript = item.subscripts[0];
                 auto const &shape = symbol.shape;
-                auto const count = array_size(shape);
                 auto &init_data = symbol.init_data;
-                init_data.reserve(count);
+                init_data.reserve(array_size(shape));
                 for (machine_word_t i = control.init;
                      lower <= i && i <= upper;
                      i += control.step
@@ -575,7 +573,7 @@ parser::expected<parser::prefix_set_t> parser::parse_implicit_prefixes() {
 parser::expected<statement_t> parser::parse_type_specification(datatype type) {
     if (m_phase == phase3) {
         warn("type specifications should come before any DATA statement or "
-             "statement function definition");
+             "arithmetic function definition");
     }
     if (type == datatype::REAL) {
         warn("support for REAL is tentative and incomplete");
@@ -604,13 +602,13 @@ parser::expected<statement_t> parser::parse_assignment() {
     auto symbol = m_current_unit->find_symbol(name);
 
     if (match('(') && symbol.shape.empty()) {
-        // Looks like a statement function definition.
+        // Looks like a arithmetic function definition.
         if (m_phase > phase3) {
             return error(
-                "statement function {} must be defined before the first "
+                "arithmetic function {} must be defined before the first "
                 "executable statement\n", name);
         }
-        return parse_statement_function_definition(name);
+        return parse_arithmetic_function_definition(name);
     }
 
     // A regular assignment is an executable statement, so bump the phase if
@@ -670,7 +668,7 @@ parser::expected<statement_t> parser::parse_accept() {
 
 parser::expected<statement_t> parser::parse_call() {
     auto const name = parse_identifier();
-    if (name.empty()) return error("CALL requires a subprogram");
+    if (name.empty()) return error("CALL requires a subprogram name");
     auto arguments = match('(') ? parse_argument_list() : argument_list_t{};
     if (!arguments) return error_of(std::move(arguments));
     if (!at_eol()) return error("unexpected token after CALL statement");
@@ -691,7 +689,11 @@ parser::expected<statement_t> parser::parse_call() {
             }
             return make<call_statement>(name, std::move(arguments).value());
         case symbolkind::argument:
-            return make<indirect_call_statement>(name, std::move(arguments).value());
+            return make<indirect_call_statement>(
+                name, std::move(arguments).value());
+        case symbolkind::internal:
+            return error("cannot CALL {} because it's an arithmetic function",
+                         name);
         default:
             break;
     }
@@ -1069,11 +1071,15 @@ parser::expected<expression_t> parser::parse_atom() {
             symbol.index = static_cast<unsigned>(args.size());
             m_current_unit->update_symbol(symbol);
         }
-        if (symbol.kind == symbolkind::subprogram) {
-            if (symbol.type == datatype::none) {
-                return error("cannot invoke SUBROUTINE {} in an expression",
-                             symbol.name);
-            }
+        if (symbol.kind == symbolkind::subprogram &&
+            symbol.type == datatype::none
+        ) {
+            return error("cannot invoke SUBROUTINE {} in an expression",
+                         symbol.name);
+        }
+        if (symbol.kind == symbolkind::subprogram ||
+            symbol.kind == symbolkind::internal
+        ) {
             return std::make_shared<function_invocation_node>(name, args);
         }
         return error("syntax error in expression near '{}'", name);
@@ -1083,14 +1089,14 @@ parser::expected<expression_t> parser::parse_atom() {
     return std::make_shared<constant_node>(std::move(constant).value().value);
 }
 
-parser::expected<expression_t> parser::parse_statement_function_expression(
+parser::expected<expression_t> parser::parse_arithmetic_function_expression(
     parameter_list_t const &params
 ) {
     // The parameter names are in scope only briefly, so we have a special way
     // to add them to the unit's symbols temporarily.
-    m_current_unit->add_fsparams(params);
+    m_current_unit->add_shadows(params);
     auto const definition = parse_expression();
-    m_current_unit->remove_fsparams();
+    m_current_unit->remove_shadows();
     return definition;
 }
 
@@ -1704,7 +1710,8 @@ parser::expected<statement_number_t> parser::parse_statement_number() {
 void parser::add_label(statement_number_t number) {
     if (number == no_statement_number) return;
     if (m_current_unit == nullptr) return;
-    auto symbol = m_current_unit->find_symbol(symbol_name{static_cast<unsigned int>(number)});
+    auto symbol =
+        m_current_unit->find_symbol(symbol_name{static_cast<unsigned>(number)});
     symbol.kind = symbolkind::label;
     if (symbol.type == datatype::unknown) {
         symbol.type = datatype::none;

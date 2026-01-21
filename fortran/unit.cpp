@@ -10,19 +10,19 @@ namespace aid::fortran {
 unit::~unit() {}
 
 void unit::update_symbol(symbol_info const &symbol) {
-    assert(symbol.kind != symbolkind::fsparam);
+    assert(symbol.kind != symbolkind::shadow);
     m_symbols.update(symbol);
 }
 
 void unit::update_symbol(symbol_info &&symbol) {
-    assert(symbol.kind != symbolkind::fsparam);
+    assert(symbol.kind != symbolkind::shadow);
     m_symbols.update(std::move(symbol));
 }
 
-void unit::add_fsparams(std::span<const symbol_name> names) {
+void unit::add_shadows(std::span<const symbol_name> names) {
     assert(m_shadows.empty());
     auto symbol = m_shadows.get(symbol_name{""});
-    symbol.kind = symbolkind::fsparam;
+    symbol.kind = symbolkind::shadow;
     for (auto const &name : names) {
         symbol.type = implicit_type(name);
         symbol.name = name;
@@ -30,7 +30,7 @@ void unit::add_fsparams(std::span<const symbol_name> names) {
     }
 }
 
-void unit::remove_fsparams() {
+void unit::remove_shadows() {
     m_shadows.clear();
 }
 
@@ -50,7 +50,6 @@ void unit::infer_types() {
 
 void unit::add_statement(statement_t statement) {
     m_code.push_back(statement);
-    statement->mark_referenced(*this);
 }
 
 void unit::set_implicit_type(char prefix, datatype type) {
@@ -90,6 +89,14 @@ std::vector<symbol_info> unit::extract_symbols(
 void unit::add_format(statement_number_t number, field_list_t fields) {
     assert(m_formats.find(number) == m_formats.end() && "FORMAT defined twice");
     m_formats[number] = std::move(fields);
+}
+
+void unit::mark_referenced() {
+    if (m_referenced) return;  // already done
+    m_referenced = true;
+    for (auto const &statement : m_code) {
+        statement->mark_referenced(*this);
+    }
 }
 
 void unit::print_symbol_table(std::ostream &out) const {

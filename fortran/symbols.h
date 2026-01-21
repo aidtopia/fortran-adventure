@@ -32,10 +32,11 @@ enum class symbolkind {
     common,     // a variable in a common block
     argument,   // an argument passed in to the subprogram
     retval,     // a local variable for the return value of the function
-    subprogram, // a subroutine or function (or statement function)
+    subprogram, // a subroutine or function (or arithmetic function)
+    internal,   // an arithmetic function, callable like a subprogram
     external,   // a subprogram that's passed as arg to another
     label,      // a statement number
-    fsparam     // a function statement parameter (always temporary!!)
+    shadow      // a parameter in an arithmetic function definition
 };
 
 struct dimension {
@@ -220,9 +221,10 @@ struct std::formatter<aid::fortran::symbolkind> :
             case argument:      return "argument";
             case retval:        return "retval";
             case subprogram:    return "subprogram";
+            case internal:      return "internal";
             case external:      return "external";
             case label:         return "label";
-            case fsparam:       return "fsparam";
+            case shadow:        return "shadow";
             default:            return "* update symbolkind formatter *";
         }
     }

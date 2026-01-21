@@ -125,7 +125,7 @@ class parser {
             phase0,  // PROGRAM (possibly implied), FUNCTION, or SUBROUTINE
             phase1,  // IMPLICIT and FORMAT
             phase2,  // specifications and FORMAT
-            phase3,  // statement function definition, FORMAT, and DATA
+            phase3,  // arithmetic function definition, FORMAT, and DATA
             phase4,  // executable statement, FORMAT, DATA, and END
             phase5   // FUNCTION or SUBROUTINE
         };
@@ -147,7 +147,7 @@ class parser {
         expected<statement_t> parse_subroutine();
         expected<statement_t> parse_end();
         expected<statement_t>
-        parse_statement_function_definition(symbol_name const &name);
+        parse_arithmetic_function_definition(symbol_name const &name);
 
         // Non-executable statements
         expected<statement_t> parse_common();
@@ -187,7 +187,7 @@ class parser {
         expected<expression_t> parse_atom();
 
         // Parsing helpers
-        expected<expression_t> parse_statement_function_expression(
+        expected<expression_t> parse_arithmetic_function_expression(
             parameter_list_t const &params
         );
         array_shape parse_array_shape();

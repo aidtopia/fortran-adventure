@@ -57,9 +57,9 @@ class continue_statement : public basic_statement {
         std::string do_generate(unit const &u) const override;
 };
 
-class definition_statement : public basic_statement {
+class arithmetic_function_definition_statement : public basic_statement {
     public:
-        definition_statement(
+        arithmetic_function_definition_statement(
             symbol_name macro,
             parameter_list_t const &params,
             expression_t definition

@@ -28,13 +28,14 @@ class basic_statement {
         std::string generate(unit const &u) const;
 
         // Uses the unit interface to mark symbols as referenced.
-        void mark_referenced(unit &u) const;
+        void mark_referenced(unit &u);
 
     private:
         virtual std::string do_generate(unit const &) const;
         virtual void do_mark_referenced(unit &) const;
 
         statement_number_t m_number = no_statement_number;
+        bool m_referenced = false;
 };
 
 // Using shared_ptr instead of unique_ptr because units, which contain
