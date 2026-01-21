@@ -40,6 +40,36 @@ namespace {
 
 }  // anonymous namespace
 
+std::string arithmetic_function_definition_statement::do_generate(
+    unit const &u
+) const {
+    auto const symbol = u.find_symbol(m_macro);
+    if (!symbol.referenced) return "";
+    return std::format("#define fn{}({}) {}",
+        m_macro, format_parameters(m_params),
+        m_definition->generate_value());
+}
+
+void arithmetic_function_definition_statement::do_mark_referenced(
+    unit &u
+) const {
+    // The definition statement does not reference the macro name.  It just
+    // defines it.
+    m_definition->mark_referenced(u);
+}
+
+std::string arithmetic_function_definition_statement::format_parameters(
+    parameter_list_t const &params
+) {
+    if (params.empty()) return {};
+    auto result = std::format("v{}", params[0]);
+    for (std::size_t i = 1; i < params.size(); ++i) {
+        result.append(std::format(", v{}", params[i]));
+    }
+    return result;
+}
+
+
 std::string assignment_statement::do_generate(unit const &) const {
     return std::format(
         "*{} = {};",
@@ -72,29 +102,6 @@ std::string indirect_call_statement::do_generate(unit const &) const {
 }
 
 std::string continue_statement::do_generate(unit const &) const { return ";"; }
-
-std::string arithmetic_function_definition_statement::do_generate(unit const &) const {
-    return std::format("#define fn{}({}) {}",
-        m_macro, format_parameters(m_params),
-        m_definition->generate_value());
-}
-
-void arithmetic_function_definition_statement::do_mark_referenced(unit &u) const {
-    // The definition statement does not reference the macro name.  It just
-    // defines it.
-    m_definition->mark_referenced(u);
-}
-
-std::string arithmetic_function_definition_statement::format_parameters(
-    parameter_list_t const &params
-) {
-    if (params.empty()) return {};
-    auto result = std::format("v{}", params[0]);
-    for (std::size_t i = 1; i < params.size(); ++i) {
-        result.append(std::format(", v{}", params[i]));
-    }
-    return result;
-}
 
 
 std::string do_statement::do_generate(unit const &u) const {

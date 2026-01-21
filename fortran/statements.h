@@ -12,6 +12,26 @@
 
 namespace aid::fortran {
 
+class arithmetic_function_definition_statement : public basic_statement {
+    public:
+        arithmetic_function_definition_statement(
+            symbol_name macro,
+            parameter_list_t const &params,
+            expression_t definition
+        ) :
+            basic_statement(), m_macro(macro), m_params(params),
+            m_definition(definition) {}
+    private:
+        std::string do_generate(unit const &u) const override;
+        void do_mark_referenced(unit &u) const override;
+
+        static std::string format_parameters(parameter_list_t const &params);
+
+        symbol_name m_macro;
+        parameter_list_t m_params;
+        expression_t m_definition;
+};
+
 class assignment_statement : public basic_statement {
     public:
         assignment_statement(expression_t lvalue, expression_t rhs) :
@@ -55,26 +75,6 @@ class continue_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-};
-
-class arithmetic_function_definition_statement : public basic_statement {
-    public:
-        arithmetic_function_definition_statement(
-            symbol_name macro,
-            parameter_list_t const &params,
-            expression_t definition
-        ) :
-            basic_statement(), m_macro(macro), m_params(params),
-            m_definition(definition) {}
-    private:
-        std::string do_generate(unit const &u) const override;
-        void do_mark_referenced(unit &u) const override;
-
-        static std::string format_parameters(parameter_list_t const &params);
-
-        symbol_name m_macro;
-        parameter_list_t m_params;
-        expression_t m_definition;
 };
 
 class do_statement : public basic_statement {

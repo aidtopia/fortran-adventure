@@ -15,37 +15,6 @@
 namespace aid::fortran {
 
 namespace {
-    static bool is_array(symbol_info const &a) {
-        return !a.shape.empty();
-    }
-    static bool is_argument(symbol_info const &a) {
-        return a.kind == symbolkind::argument;
-    }
-    static bool is_unreferenced_argument(symbol_info const &a) {
-        return a.kind == symbolkind::argument && !a.referenced;
-    }
-    static bool is_common(symbol_info const &a) {
-        return a.kind == symbolkind::common;
-    }
-    static bool is_return_value(symbol_info const &a) {
-        return a.kind == symbolkind::retval;
-    }
-    static bool is_referenced_local(symbol_info const &a) {
-        return a.kind == symbolkind::local && a.referenced;
-    }
-    static bool is_referenced_subprogram(symbol_info const &a) {
-        return a.kind == symbolkind::subprogram && a.referenced;
-    }
-
-    static bool by_block_index(symbol_info const &a, symbol_info const &b) {
-        if (a.comdat < b.comdat) return true;
-        if (a.comdat > b.comdat) return false;
-        if (a.index < b.index) return true;
-        return false;
-    }
-    static bool by_index(symbol_info const &a, symbol_info const &b) {
-        return (a.index < b.index);
-    }
     static std::string name(symbol_info const &sym) {
         // sym.name is the identifier used in the Fortran code, which sometimes
         // clashes with C or C++ identifiers (especially `NULL`), so we'll
@@ -200,7 +169,6 @@ std::string c_generator::generate_program(program const &prog) {
     auto const builtins      = generate_builtins(prog);
     auto const prototypes    = generate_prototypes(prog);
     auto const common_blocks = generate_common_blocks(prog);
-    auto const main_program  = generate_unit(prog);
     auto const subprograms   = generate_subprograms(prog);
     auto const init_function = generate_static_initialization();
     auto const main_function = generate_main_function(prog);
@@ -211,10 +179,10 @@ std::string c_generator::generate_program(program const &prog) {
         std::format("#define MEMSIZE {}\n"
                     "static word_t memory[MEMSIZE];\n", m_memsize);
 
-    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
         machine_definitions(),
         host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
-        prototypes, memory, common_blocks, main_program, subprograms,
+        prototypes, memory, common_blocks, subprograms,
         init_function, usage_function(), main_function);
 }
 
@@ -223,11 +191,6 @@ std::string c_generator::generate_builtins(program const &prog) {
 
     // Find all functions and subroutines that are referenced in any unit.
     auto undefined_subs = std::set<symbol_name>{};
-    auto const subs_refed_by_main =
-        prog.extract_symbols(is_referenced_subprogram);
-    for (auto const &s : subs_refed_by_main) {
-        undefined_subs.insert(s.name);
-    }
     auto const subprograms = prog.extract_subprograms();
     for (auto const *pu : subprograms) {
         auto const subs_refed_by_unit =
@@ -238,12 +201,12 @@ std::string c_generator::generate_builtins(program const &prog) {
     }
 
     // Remove ones that are defined.
-    undefined_subs.erase(prog.unit_name());
     for (auto const *pu : subprograms) {
         undefined_subs.erase(pu->unit_name());
     }
 
-    // Provide built-in ones.
+    // Provide built-in ones. This is in a separate pass so that user-defined
+    // subprograms will supercede builtins.
     bool any_builtins = false;
     for (auto const &builtin : available_builtins) {
         if (undefined_subs.contains(builtin.name)) {
@@ -256,8 +219,9 @@ std::string c_generator::generate_builtins(program const &prog) {
         }
     }
 
-    // In theory, we could provide an error message if there was anything left
-    // in `undefined_subs`. Unfortunately, that includes statement functions.
+    for (auto const &sub : undefined_subs) {
+        std::print(std::cerr, "ERROR: subprogram '{}' is not defined\n", sub);
+    }
     return result;
 }
 
@@ -276,33 +240,17 @@ std::string c_generator::generate_prototypes(program const &prog) {
 }
 
 std::string c_generator::generate_common_blocks(program const &prog) {
-    auto result = std::string{};
-    auto const commons = prog.extract_symbols(is_common, by_block_index);
-    if (commons.empty()) return result;
-    result += "// Common Blocks\n";
-    auto block = symbol_name{};
-    auto size = std::size_t{0};
-    for (auto const &var : commons) {
-        if (var.comdat != block) {
-            result += generate_common_block(block, size);
-            block = var.comdat;
-            size = 0;
-        }
-        size += array_size(var.shape);
+    auto const comdats = common_block_sizes(prog);
+    if (comdats.empty()) return {};
+    auto result = std::string{"// Common Blocks\n"};
+    for (auto const &[block, size] : common_block_sizes(prog)) {
+        if (size == 0uz) continue;
+        result +=
+            std::format("word_t * const common{} = &memory[{}]; // [{}];\n",
+                        block, m_memsize, size);
+        m_memsize += size;
     }
-    result += generate_common_block(block, size);
     return result;
-}
-
-std::string c_generator::generate_common_block(
-    symbol_name const &block,
-    machine_word_t size
-) {
-    if (size == 0) return {};
-    auto const addr = m_memsize;
-    m_memsize += size;
-    return std::format("word_t * const common{} = &memory[{}]; // [{}];\n",
-                       block, addr, size);
 }
 
 std::string c_generator::generate_main_function(program const &prog) {
@@ -349,7 +297,7 @@ int main(int argc, const char *argv[]) {{
     sub{}();
     return 0;
 }}
-)", prog.unit_name());
+)", prog.name());
 }
 
 std::string c_generator::generate_subprograms(program const &prog) {

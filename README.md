@@ -28,7 +28,7 @@ Here's the status of those efforts (using [The Adventure Family Tree](https://mi
 * <sup>_h_</sup> Compiler warns of unreachable code because the source has unreachable code.
 * <sup>_i_</sup> Commands must be ALL CAPS.  You can launch with the `-CAPS` option to have keyboard input transliterated to uppercase.
 * <sup>_j_</sup> When the program is ending, the user is given an option to save a "core image" to a file.  The `-c<file>` option allows loading a previously saved core image.
-* <sup>_k_</sup> Out of scope, for now.  It appears the translator's everything's-a-36-bit-integer model would not be sufficient for those version.
+* <sup>_k_</sup> Out of scope, for now.  It appears the translator's everything's-a-36-bit-integer model would not be sufficient for these versions.
 
 ## How to try it out
 

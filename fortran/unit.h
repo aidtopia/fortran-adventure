@@ -33,6 +33,8 @@ class unit {
         unit(unit const &rhs) = delete;
         unit &operator=(unit const &rhs) = delete;
 
+        bool empty() const { return m_symbols.empty() && m_code.empty(); }
+
         // The name of this unit (i.e., the program, subroutine, or function).
         symbol_name unit_name() const { return m_unit_name; }
         void set_unit_name(symbol_name const &name) { m_unit_name = name; }
@@ -121,6 +123,39 @@ class unit {
         statement_block m_code;
         bool m_referenced = false;
 };
+
+// Predicates for extract_symbols.
+inline bool is_array(symbol_info const &a) {
+    return !a.shape.empty();
+}
+inline bool is_argument(symbol_info const &a) {
+    return a.kind == symbolkind::argument;
+}
+inline bool is_unreferenced_argument(symbol_info const &a) {
+    return a.kind == symbolkind::argument && !a.referenced;
+}
+inline bool is_common(symbol_info const &a) {
+    return a.kind == symbolkind::common;
+}
+inline bool is_return_value(symbol_info const &a) {
+    return a.kind == symbolkind::retval;
+}
+inline bool is_referenced_local(symbol_info const &a) {
+    return a.kind == symbolkind::local && a.referenced;
+}
+inline bool is_referenced_subprogram(symbol_info const &a) {
+    return a.kind == symbolkind::subprogram && a.referenced;
+}
+
+inline bool by_block_index(symbol_info const &a, symbol_info const &b) {
+    if (a.comdat < b.comdat) return true;
+    if (a.comdat > b.comdat) return false;
+    if (a.index < b.index) return true;
+    return false;
+}
+inline bool by_index(symbol_info const &a, symbol_info const &b) {
+    return (a.index < b.index);
+}
 
 }
 

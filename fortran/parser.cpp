@@ -45,12 +45,12 @@ parser::expected<program> parser::parse_files(
     main_program.set_source_files(sources);
 
     // If the program wasn't given a name, use the first source file's name.
-    if (main_program.unit_name().empty()) {
+    if (main_program.name().empty()) {
         auto const &first = paths.front();
         if (first.has_stem()) {
             auto const stem = to_upper_ascii(first.stem().string());
             auto const name = symbol_name{stem};
-            main_program.set_unit_name(name);
+            main_program.set_name(name);
         }
     }
     return main_program;
@@ -144,10 +144,12 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::LOGICAL:      return parse_function(datatype::LOGICAL);
         case keyword::FUNCTION:     return parse_function();
         case keyword::SUBROUTINE:   return parse_subroutine();
-        default:
+        default: {
             // Adventure dives right in without a PROGRAM statement.
-            begin_program();  // advances the phase
+            auto begin_result = begin_main_subprogram(symbol_name{});
+            if (!begin_result) return error_of(std::move(begin_result));
             break;
+        }
     }
 
     // A couple statement types are allowed through most phases.
@@ -244,11 +246,12 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
 parser::expected<statement_t> parser::parse_program() {
     // Adventure doesn't begin with a PROGRAM statement.  In fact, PROGRAM
     // statements may have been a later addition to Fortran.  Nevertheless,
-    // we handle it for parser symmetry.
+    // we handle it in case we get a multi-file source in the wrong order.
     auto const name = parse_identifier();
     if (name.empty()) return error("PROGRAM requires a name");
     if (!at_eol()) return error("unexpected token after PROGRAM statement");
-    begin_program(name);
+    auto begin_result = begin_main_subprogram(name);
+    if (!begin_result) return error_of(std::move(begin_result));
     return nullptr;
 }
 
@@ -262,7 +265,8 @@ parser::expected<statement_t> parser::parse_function(datatype type) {
     }
     if (!at_eol()) return error("unexpected token after FUNCTION statement");
 
-    if (!begin_subprogram(name)) return error("problem starting a FUNCTION");
+    auto begin_result = begin_subprogram(name);
+    if (!begin_result) return error_of(std::move(begin_result));
 
     // The function name is used for the return value.
     auto retval = m_current_unit->find_symbol(name);
@@ -296,7 +300,9 @@ parser::expected<statement_t> parser::parse_subroutine() {
     }
 
     if (!at_eol()) return error("unexpected token after SUBROUTINE statement");
-    if (!begin_subprogram(name)) return error("problem starting a SUBROUTINE");
+
+    auto begin_result = begin_subprogram(name);
+    if (!begin_result) return error_of(std::move(begin_result));
 
     // Add the subroutine's parameters.  We don't know their types yet.
     auto index = 1u;
@@ -306,30 +312,21 @@ parser::expected<statement_t> parser::parse_subroutine() {
         symbol.index = index++;
         m_current_unit->update_symbol(symbol);
     }
-
-    // The subroutine is likely already be in the program's symbol table.
-    if (m_program.has_symbol(name)) {
-        auto const symbol = m_program.find_symbol(name);
-        if (symbol.kind != symbolkind::subprogram ||
-            symbol.type != datatype::none
-        ) {
-            return error("SUBROUTINE {} has a conflicting return type",  name);
-        }
-    }
     return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_end() {
     if (!at_eol()) return error("unexpected token after END statement");
-    if (m_current_unit == &m_subprogram) {
-        end_subprogram();
-    } else if (m_current_unit == &m_program) {
-        end_program();
-    } else {
+    if (m_current_unit == nullptr) {
         return error("END statement while outside translation unit");
     }
-    // If we return an actual statement, the top level code will attempt to
-    // add it to the unit after the unit has been closed.
+    auto end_result =
+        m_current_subprogram_is_main ? end_main_subprogram()
+                                     : end_subprogram();
+    if (!end_result) return error_of(std::move(end_result));
+
+    // We cannot return a statement because code up the call chaing would
+    // attempt to add it to the unit after the unit has been closed.
     return nullptr;
 }
 
@@ -1100,6 +1097,7 @@ parser::expected<expression_t> parser::parse_arithmetic_function_expression(
     return definition;
 }
 
+// TODO:  This should return `expected<array_shape>`.
 array_shape parser::parse_array_shape() {
     if (!accept('(')) return {};
     auto shape = array_shape{};
@@ -1722,38 +1720,50 @@ void parser::add_label(statement_number_t number) {
     m_current_unit->update_symbol(symbol);
 }
 
-bool parser::begin_program(symbol_name const &name) {
-    assert(m_current_unit == nullptr);
-    if (!name.empty()) m_program.set_unit_name(name);
-    m_current_unit = &m_program;
+parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {
+    if (m_current_unit != nullptr) {
+        return error("cannot nest PROGRAM '{}' within subprogram '{}'",
+                     name, m_current_unit->unit_name());
+    }
+    if (m_program.has_main_subprogram()) {
+        return error("cannot have PROGRAM '{}' and PROGRAM '{}'",
+                     m_program.name(), name);
+    }
+    m_subprogram = unit{name};
+    m_current_unit = &m_subprogram;
     m_phase = phase1;
+    m_current_subprogram_is_main = true;
     return true;
 }
 
-bool parser::end_program() {
-    assert(m_current_unit == &m_program);
+parser::expected<bool> parser::end_main_subprogram() {
+    if (!m_current_subprogram_is_main ||
+        m_program.has_main_subprogram()
+    ) {
+        return error("internal error while ending main subprogram");
+    }
+    m_program.add_main_subprogram(std::move(m_subprogram));
     m_current_unit = nullptr;
     m_phase = phase5;
+    m_current_subprogram_is_main = false;
     return true;
 }
 
-bool parser::begin_subprogram(symbol_name const &name) {
+parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
     if (m_current_unit != nullptr) {
-        std::print(std::cerr,
-            "cannot nest subprogram {} within {}\n",
+        return error(
+            "cannot nest subprogram '{}'; ensure '{}' has an END statement",
             name, m_current_unit->unit_name());
-        return false;
     }
-    m_subprogram.set_unit_name(name);
+    m_subprogram = unit{name};
     m_current_unit = &m_subprogram;
     m_phase = phase1;
     return true;
 }
 
-bool parser::end_subprogram() {
-    m_current_unit = nullptr;
+parser::expected<bool> parser::end_subprogram() {
     m_program.add_subprogram(std::move(m_subprogram));
-    m_subprogram = std::move(unit{});
+    m_current_unit = nullptr;
     m_phase = phase5;
     return true;
 }

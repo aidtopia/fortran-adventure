@@ -190,7 +190,7 @@ class parser {
         expected<expression_t> parse_arithmetic_function_expression(
             parameter_list_t const &params
         );
-        array_shape parse_array_shape();
+        array_shape parse_array_shape(); // TODO:  Should return expected<array_shape>.
         expected<dimension> parse_one_dimension();
         expected<io_list_t> parse_io_list();
         expected<io_list_item> parse_io_list_item();
@@ -218,12 +218,12 @@ class parser {
         expected<std::string> parse_literal();
         expected<statement_number_t> parse_statement_number();
 
-        void add_label(statement_number_t number);
+        expected<bool> begin_main_subprogram(symbol_name const &name);
+        expected<bool> end_main_subprogram();
+        expected<bool> begin_subprogram(symbol_name const &name);
+        expected<bool> end_subprogram();
 
-        bool begin_program(symbol_name const &name = symbol_name{});
-        bool end_program();
-        bool begin_subprogram(symbol_name const &name = symbol_name{"SUBPRG"});
-        bool end_subprogram();
+        void add_label(statement_number_t number);
 
         // Hacks for when we need to peek ahead one token.
         bool accept(keyword kw);
@@ -299,8 +299,11 @@ class parser {
         std::string::const_iterator m_it;
         program m_program;
         unit m_subprogram;
-        unit *m_current_unit = nullptr;  // points to m_program or m_subprogram
+        // TODO:  m_current_unit is essentially obsolete.  Nearly every use of
+        // `m_current_unit->` should become `m_subprogram.`.
+        unit *m_current_unit = nullptr;  // points to m_subprogram
         phase_t m_phase = phase0;
+        bool m_current_subprogram_is_main = false;
         statement_number_t m_statement_number;
 };
 
