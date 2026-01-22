@@ -325,7 +325,7 @@ std::string c_generator::generate_static_initialization() {
             if (data.front() != 0) {
                 runs +=
                     std::format(
-                        " for (i = 0; i < {}; ++i) {}[{}+i] = {};\n",
+                        " for (int i = 0; i < {}; ++i) {}[{}+i] = {};\n",
                         data.size(), base(block), offset, data.front());
             }
         } else {
@@ -340,8 +340,6 @@ std::string c_generator::generate_static_initialization() {
             }
         }
     }
-
-    if (!runs.empty()) runs = std::format(" int i;\n{}", runs);
 
     return
         std::format("void initialize_static_data() {{\n{}{}}}\n",

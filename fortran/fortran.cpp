@@ -104,7 +104,7 @@ int main(int argc, char const *argv[]) {
     program.mark_referenced();
 
     // TODO:  Walk the (referenced parts of) the program to assign addresses
-    // for all fo the variables.
+    // for all of the variables.
 
 
     // BACK END ----------------
