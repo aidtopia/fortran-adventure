@@ -66,7 +66,11 @@ std::vector<unit const *> program::extract_subprograms() const {
 
 void program::mark_referenced() {
     auto is_called = [] (symbol_info const &symbol) {
-        return symbol.kind == symbolkind::subprogram && symbol.referenced;
+        return
+            symbol.referenced && (
+                symbol.kind == symbolkind::subprogram ||
+                symbol.kind == symbolkind::external
+            );
     };
 
     auto processed = std::set<symbol_name>{};

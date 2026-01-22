@@ -669,8 +669,12 @@ parser::expected<statement_t> parser::parse_accept() {
 parser::expected<statement_t> parser::parse_call() {
     auto const name = parse_identifier();
     if (name.empty()) return error("CALL requires a subprogram name");
-    auto arguments = match('(') ? parse_argument_list() : argument_list_t{};
-    if (!arguments) return error_of(std::move(arguments));
+    auto arguments = argument_list_t{};
+    if (match('(')) {
+        auto xargs = parse_argument_list();
+        if (!xargs) return error_of(std::move(xargs));
+        arguments = std::move(xargs).value();
+    }
     if (!at_eol()) return error("unexpected token after CALL statement");
 
     auto symbol = m_subprogram.find_symbol(name);
@@ -678,19 +682,20 @@ parser::expected<statement_t> parser::parse_call() {
         // We infer that it's a subroutine.
         symbol.type = datatype::none;
         symbol.kind = symbolkind::subprogram;
-        symbol.index = static_cast<unsigned>(arguments.value().size());
+        symbol.index = static_cast<unsigned>(arguments.size());
         m_subprogram.update_symbol(symbol);
     }
 
     switch (symbol.kind) {
         case symbolkind::subprogram:
-            if (arguments.value().size() != symbol.index) {
+            if (arguments.size() != symbol.index) {
                 return error("wrong number of arguments in CALL of {}", name);
             }
-            return make<call_statement>(name, std::move(arguments).value());
+            return make<call_statement>(name, std::move(arguments));
         case symbolkind::argument:
-            return make<indirect_call_statement>(
-                name, std::move(arguments).value());
+            symbol.type = datatype::subptr;
+            m_subprogram.update_symbol(symbol);
+            return make<indirect_call_statement>(name, std::move(arguments));
         case symbolkind::internal:
             return error("cannot CALL {} because it's an arithmetic function",
                          name);

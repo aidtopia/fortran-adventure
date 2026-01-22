@@ -24,7 +24,9 @@ enum class datatype {
     DOUBLE,   // not implemented
     COMPLEX,  // not implemented
     LOGICAL,  // a bool essentially
-    LITERAL   // a short character string, interchangeable with INTEGER
+    LITERAL,  // a short character string, interchangeable with INTEGER
+    // special cases
+    subptr    // a pointer to a subprogram for indirect call or evaluation
 };
 
 enum class symbolkind {
@@ -252,6 +254,7 @@ struct std::formatter<aid::fortran::datatype> :
             case COMPLEX:       return "COMPLEX";
             case LOGICAL:       return "LOGICAL";
             case LITERAL:       return "LITERAL";
+            case subptr:        return "subptr";
             default:            return "* update datatype formatter *";
         }
     }

@@ -8,9 +8,6 @@ SUPN0350r4/
 WOOD0350v1/
 WOOD0350v2/
 
-# And a hacked version for testing
-TEST0350/
-
 # Don't commit anything from build directories.
 */target/
 fortran/x86/

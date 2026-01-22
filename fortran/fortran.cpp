@@ -98,9 +98,8 @@ int main(int argc, char const *argv[]) {
     // MIDDLE END --------------
     // Here we do "passes" over `program`, shaping it as needed.
 
-    // Determination of what's referenced or not referenced by marking the main
-    // program as referenced, which will recursively mark everything that's
-    // reachable.
+    // Determine what's referenced or unreferenced by marking the program as
+    // referenced, which will recursively mark everything that's reachable.
     program.mark_referenced();
 
     // TODO:  Walk the (referenced parts of) the program to assign addresses
