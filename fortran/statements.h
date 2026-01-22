@@ -122,6 +122,17 @@ class computed_goto_statement : public basic_statement {
         std::vector<statement_number_t> m_targets;
 };
 
+class format_statement : public basic_statement {
+    public:
+        explicit format_statement(std::string format) :
+            basic_statement(), m_format(format) {}
+
+    private:
+        std::string do_generate(unit const &u) const override;
+
+        std::string m_format;
+};
+
 class if_statement : public basic_statement {
     public:
         if_statement(expression_t condition, statement_t then) :

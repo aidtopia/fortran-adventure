@@ -170,6 +170,11 @@ std::string computed_goto_statement::cases() const {
 }
 
 
+std::string format_statement::do_generate(unit const &/*u*/) const {
+    return "/* FORMAT */";
+}
+
+
 std::string if_statement::do_generate(unit const &u) const {
     return std::format("if (truth({})) {}",
         m_condition->generate_value(), m_then->generate(u));
@@ -179,6 +184,7 @@ void if_statement::do_mark_referenced(unit &u) const {
     m_condition->mark_referenced(u);
     m_then->mark_referenced(u);
 }
+
 
 
 std::string numeric_if_statement::do_generate(unit const &) const {

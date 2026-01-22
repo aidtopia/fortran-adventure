@@ -521,10 +521,12 @@ parser::expected<statement_t> parser::parse_format(statement_number_t number) {
 
     auto fields = parse_field_list();
     if (!fields) return error_of(std::move(fields));
-
-    m_subprogram.add_format(number, std::move(fields).value());
     if (!at_eol()) return error("unexpected token after FORMAT statement");
-    return nullptr;
+
+    m_subprogram.add_format(number, fields.value());
+    // The format_statement does nothing but provide a label in case there's a
+    // GOTO this line.
+    return make<format_statement>(std::move(fields).value());
 }
 
 parser::expected<statement_t> parser::parse_implicit() {
