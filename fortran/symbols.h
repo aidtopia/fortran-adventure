@@ -127,7 +127,7 @@ struct symbol_info {
     //
     // `referenced` means the symbol is assigned to (other than initial data),
     // read from, called, invoked, or ref-passed.  For labels, it means it is
-    // the target of a GOTO statement.  Any symbol that's not is_referenced in the
+    // the target of a GOTO statement.  Any symbol that's not referenced in the
     // program will be dropped in translation (to avoid warnings from the C
     // compiler).
 };

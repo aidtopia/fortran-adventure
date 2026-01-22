@@ -74,7 +74,7 @@ void program::mark_referenced() {
             to_process.erase(name);
             if (auto sub = find_subprogram(name); sub) {
                 sub->mark_referenced();
-                // Add newly is_referenced callees.
+                // Add newly referenced callees.
                 for (auto const &callee : sub->extract_symbols(is_called)) {
                     if (!processed.contains(callee.name)) {
                         to_process.insert(callee.name);
