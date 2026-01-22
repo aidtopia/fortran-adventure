@@ -24,6 +24,9 @@ class basic_statement {
         void set_statement_number(statement_number_t number) {
             m_number = number;
         }
+        statement_number_t get_statement_number() const {
+            return m_number;
+        }
 
         std::string generate(unit const &u) const;
 

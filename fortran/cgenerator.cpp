@@ -449,12 +449,16 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
 }
 
 std::string c_generator::generate_format_specifications(unit const &u) {
-    if (u.formats().empty()) return {};
+    auto const labels = u.extract_symbols(is_referenced_format);
+    if (labels.empty()) return {};
     auto result = " // IO format specifications\n"s;
-    for (auto const format : u.formats()) {
-        result +=
-            std::format(" static const char fmt{}[] = \"{}\";\n",
-                        format.first, escape_string(format.second));
+    for (auto const &label : labels) {
+        if (!label.referenced) continue;
+        auto const it = u.formats().find(label.name);
+        auto const fields =
+            it == u.formats().end() ? "MISSING SPEC" : it->second;
+        result += std::format(" static const char fmt{}[] = \"{}\";\n",
+                              label.name, escape_string(fields));
     }
     return result;
 }

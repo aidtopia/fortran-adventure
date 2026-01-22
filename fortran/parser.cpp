@@ -523,10 +523,18 @@ parser::expected<statement_t> parser::parse_format(statement_number_t number) {
     if (!fields) return error_of(std::move(fields));
     if (!at_eol()) return error("unexpected token after FORMAT statement");
 
-    m_subprogram.add_format(number, fields.value());
-    // The format_statement does nothing but provide a label in case there's a
-    // GOTO this line.
-    return make<format_statement>(std::move(fields).value());
+    auto const name = symbol_name(number);
+    auto symbol = m_subprogram.find_symbol(name);
+    if (symbol.kind == symbolkind::label) {
+        return error("statement {} cannot be both a FORMAT and branch target; "
+                     "branch targets must be executable statements", number);
+    }
+    assert(symbol.type == datatype::unknown);
+    symbol.kind = symbolkind::format;
+    symbol.type = datatype::none;
+    m_subprogram.update_symbol(symbol);
+    m_subprogram.add_format(name, std::move(fields).value());
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_implicit() {
@@ -744,7 +752,8 @@ parser::expected<statement_t> parser::parse_unconditional_goto() {
     auto target = parse_statement_number();
     if (!target) return error_of(std::move(target));
     if (!at_eol()) return error("unexpected tokens after unconditional GOTO");
-    add_label(target.value());
+    auto xa = add_branch_target(target.value());
+    if (!xa) return error_of(std::move(xa));
     return make<goto_statement>(std::move(target).value());
 }
 
@@ -754,7 +763,8 @@ parser::expected<statement_t> parser::parse_computed_goto() {
     do {
         auto target = parse_statement_number();
         if (!target) return error_of(std::move(target));
-        add_label(target.value());
+        auto xa = add_branch_target(target.value());
+        if (!xa) return error_of(std::move(xa));
         targets.push_back(std::move(target).value());
     } while (accept(','));
     if (!accept(')')) return error("missing ')' in computed GOTO");
@@ -780,9 +790,12 @@ parser::expected<statement_t> parser::parse_if() {
         auto posi = parse_statement_number();
         if (!posi) return error_of(std::move(posi));
         if (!at_eol()) return error("unexpected token after numeric IF");
-        add_label(nega.value());
-        add_label(zero.value());
-        add_label(posi.value());
+        auto xa = add_branch_target(nega.value());
+        if (!xa) return error_of(std::move(xa));
+        xa      = add_branch_target(zero.value());
+        if (!xa) return error_of(std::move(xa));
+        xa      = add_branch_target(posi.value());
+        if (!xa) return error_of(std::move(xa));
         return make<numeric_if_statement>(
             std::move(condition).value(), std::move(nega).value(),
             std::move(zero).value(), std::move(posi).value());
@@ -1722,19 +1735,21 @@ parser::expected<statement_number_t> parser::parse_statement_number() {
     return number;
 }
 
-void parser::add_label(statement_number_t number) {
-    if (number == no_statement_number) return;
+parser::expected<bool> parser::add_branch_target(statement_number_t number) {
+    assert(number != no_statement_number);
     assert(phase0 < m_phase && m_phase < phase5);
     auto symbol =
         m_subprogram.find_symbol(symbol_name{static_cast<unsigned>(number)});
-    symbol.kind = symbolkind::label;
-    if (symbol.type == datatype::unknown) {
-        symbol.type = datatype::none;
+    if (symbol.kind == symbolkind::format) {
+        return error("statement {} cannot be a branch target and a FORMAT; "
+                     "a FORMAT statement is not executable", number);
     }
-    // We're adding labels only for targets of GOTO, numerical IF, etc., so by
-    // definition, they are is_referenced.
-    symbol.referenced = true;
-    m_subprogram.update_symbol(symbol);
+    if (symbol.kind != symbolkind::label) {
+        symbol.kind = symbolkind::label;
+        symbol.type = datatype::none;
+        m_subprogram.update_symbol(symbol);
+    }
+    return true;
 }
 
 parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {

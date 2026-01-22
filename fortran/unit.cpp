@@ -86,9 +86,13 @@ std::vector<symbol_info> unit::extract_symbols(
     return symbols;
 }
 
-void unit::add_format(statement_number_t number, field_list_t fields) {
-    assert(m_formats.find(number) == m_formats.end() && "FORMAT defined twice");
-    m_formats[number] = std::move(fields);
+void unit::add_format(symbol_name label, field_list_t &&fields) {
+    assert(m_formats.find(label) == m_formats.end() && "FORMAT defined twice");
+    m_formats[label] = std::move(fields);
+}
+
+void unit::add_format(statement_number_t number, field_list_t &&fields) {
+    add_format(symbol_name{number}, std::move(fields));
 }
 
 void unit::mark_referenced() {
@@ -113,7 +117,7 @@ void unit::print_symbol_table(std::ostream &out) const {
         k_bang + k_symbol + 1 + k_kind + 1 + k_comdat + 1 + k_index + 1 +
         k_type + 1 + k_address + 1 + k_dimens + 1;
     auto constexpr k_init_data  = k_table_width - k_subtotal;
-    auto constexpr k_format     = k_address + 1 + k_dimens + 1 + k_init_data;
+    auto constexpr k_format     = k_init_data;
 
     auto const name = std::format("{}{}", m_referenced ? "" : "!", unit_name());
     std::print(out, "{:-^{}}\n", name, k_table_width);
@@ -122,15 +126,9 @@ void unit::print_symbol_table(std::ostream &out) const {
         "", k_bang, "symbol", k_symbol, "kind", k_kind, "comdat", k_comdat,
         "idx", k_index, "type", k_type, "addr", k_address,
         "dimens", k_dimens, "initial data", k_init_data);
-    auto if_any = [] (symbol_info const &) { return true; };
-    auto sort_order =
-        [] (symbol_info const &a, symbol_info const &b) {
-            if (a.name < b.name) return true;
-            if (a.name > b.name) return false;
-            return false;
-        };
+    auto is_any = [] (symbol_info const &) { return true; };
 
-    auto const copies = extract_symbols(if_any, sort_order);
+    auto const copies = extract_symbols(is_any, by_name);
     for (auto const &s : copies) { 
         auto const comdat =
             s.kind != symbolkind::common ? "" :
@@ -157,7 +155,17 @@ void unit::print_symbol_table(std::ostream &out) const {
         }
         std::print(out, "{:<{}} ", dimensions, k_dimens);
 
-        if (!s.init_data.empty()) {
+        if (s.kind == symbolkind::format) {
+            auto const it = m_formats.find(s.name);
+            auto const &fields =
+                it == m_formats.end() ? "missing format!" : it->second;
+            if (fields.size() > k_format) {
+                std::print(out, "{}...",
+                           std::string_view(fields.data(), k_format-3));
+            } else {
+                std::print(out, "{}", fields);
+            }
+        } else if (!s.init_data.empty()) {
             auto data = std::string{};
             data = format_word(s.init_data[0], s.type);
             for (std::size_t j = 1; j < s.init_data.size(); ++j) {
@@ -172,17 +180,6 @@ void unit::print_symbol_table(std::ostream &out) const {
             std::print(out, "{}", data);
         }
         std::print(out, "\n");
-    }
-    for (auto const &[number, fields] : m_formats) {
-        std::print(out, "{:{}}{:>{}} {:{}} {:{}} {:{}} {:{}} ",
-                   "", k_bang, number, k_symbol, "FORMAT", k_kind,
-                   "", k_comdat, "", k_index, "", k_type);
-        if (fields.size() > k_format) {
-            std::print(out, "{}...\n",
-                       std::string_view(fields.data(), k_format-3));
-        } else {
-            std::print(out, "{}\n", fields);
-        }
     }
 }
 

@@ -20,7 +20,7 @@ namespace aid::fortran {
 // variables it contains.
 using comdat_table = std::map<symbol_name, unsigned>;
 
-using format_table = std::map<statement_number_t, field_list_t>;
+using format_table = std::map<symbol_name, field_list_t>;
 
 // A unit is a program, subroutine, or function.
 class unit {
@@ -67,7 +67,8 @@ class unit {
             std::function<bool (symbol_info const &, symbol_info const &)> sort_by
         ) const;
 
-        void add_format(statement_number_t number, field_list_t fields);
+        void add_format(symbol_name label, field_list_t &&fields);
+        void add_format(statement_number_t number, field_list_t &&fields);
         format_table const &formats() const { return m_formats; }
 
         void add_statement(statement_t statement);
@@ -127,6 +128,9 @@ inline bool is_common(symbol_info const &a) {
 inline bool is_return_value(symbol_info const &a) {
     return a.kind == symbolkind::retval;
 }
+inline bool is_referenced_format(symbol_info const &a) {
+    return a.kind == symbolkind::format && a.referenced;
+}
 inline bool is_referenced_local(symbol_info const &a) {
     return a.kind == symbolkind::local && a.referenced;
 }
@@ -143,6 +147,12 @@ inline bool by_block_index(symbol_info const &a, symbol_info const &b) {
 inline bool by_index(symbol_info const &a, symbol_info const &b) {
     return (a.index < b.index);
 }
+inline bool by_name(symbol_info const &a, symbol_info const &b) {
+    if (a.name < b.name) return true;
+    if (a.name > b.name) return false;
+    return false;
+};
+
 
 }
 

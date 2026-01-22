@@ -25,7 +25,7 @@ enum class datatype {
     COMPLEX,  // not implemented
     LOGICAL,  // a bool essentially
     LITERAL,  // a short character string, interchangeable with INTEGER
-    // special cases
+    // In addition to the basic types above, symbolkind::argument can be:
     subptr    // a pointer to a subprogram for indirect call or evaluation
 };
 
@@ -37,7 +37,8 @@ enum class symbolkind {
     subprogram, // a subroutine or function (or arithmetic function)
     internal,   // an arithmetic function, callable like a subprogram
     external,   // a subprogram that's passed as arg to another
-    label,      // a statement number
+    label,      // statement number of a branch target
+    format,     // statement number of a FORMAT specification
     shadow      // a parameter in an arithmetic function definition
 };
 
@@ -106,11 +107,11 @@ class symbol_name {
 
 struct symbol_info {
     symbol_name name;
-    unsigned    address = 0;
     symbolkind  kind = symbolkind::local;
     symbol_name comdat;
     unsigned    index = 0;  // see note below
     datatype    type = datatype::unknown;
+    unsigned    address = 0;
     array_shape shape;
     init_data_t init_data;
     bool        referenced;
@@ -226,6 +227,7 @@ struct std::formatter<aid::fortran::symbolkind> :
             case internal:      return "internal";
             case external:      return "external";
             case label:         return "label";
+            case format:        return "FORMAT";
             case shadow:        return "shadow";
             default:            return "* update symbolkind formatter *";
         }
@@ -247,7 +249,7 @@ struct std::formatter<aid::fortran::datatype> :
         using enum aid::fortran::datatype;
         switch (type) {
             case unknown:       return "unknown";
-            case none:          return "none";
+            case none:          return "-";
             case INTEGER:       return "INTEGER";
             case REAL:          return "REAL";
             case DOUBLE:        return "DOUBLE";

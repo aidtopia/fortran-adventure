@@ -148,6 +148,9 @@ std::string goto_statement::do_generate(unit const &) const {
     return std::format("goto L{};", m_target);
 }
 
+void goto_statement::do_mark_referenced(unit &u) const {
+    u.mark_symbol_referenced(symbol_name{m_target});
+}
 
 std::string computed_goto_statement::do_generate(unit const &) const {
     return std::format("switch ({}) {{\n{} }}",
@@ -156,6 +159,9 @@ std::string computed_goto_statement::do_generate(unit const &) const {
 
 void computed_goto_statement::do_mark_referenced(unit &u) const {
     m_expression->mark_referenced(u);
+    for (auto const &target : m_targets) {
+        u.mark_symbol_referenced(symbol_name{target});
+    }
 }
 
 std::string computed_goto_statement::cases() const {
@@ -170,11 +176,6 @@ std::string computed_goto_statement::cases() const {
 }
 
 
-std::string format_statement::do_generate(unit const &/*u*/) const {
-    return "/* FORMAT */";
-}
-
-
 std::string if_statement::do_generate(unit const &u) const {
     return std::format("if (truth({})) {}",
         m_condition->generate_value(), m_then->generate(u));
@@ -184,7 +185,6 @@ void if_statement::do_mark_referenced(unit &u) const {
     m_condition->mark_referenced(u);
     m_then->mark_referenced(u);
 }
-
 
 
 std::string numeric_if_statement::do_generate(unit const &) const {
@@ -200,16 +200,19 @@ std::string numeric_if_statement::do_generate(unit const &) const {
 
 void numeric_if_statement::do_mark_referenced(unit &u) const {
     m_condition->mark_referenced(u);
+    u.mark_symbol_referenced(symbol_name{m_negative});
+    u.mark_symbol_referenced(symbol_name{m_zero});
+    u.mark_symbol_referenced(symbol_name{m_positive});
 }
 
 
 std::string open_statement::do_generate(unit const &) const {
     return std::format("io_open({}, \"{}.DAT\");",
-        m_unit->generate_value(), escape_file_name(m_name));
+        m_iounit->generate_value(), escape_file_name(m_name));
 }
 
 void open_statement::do_mark_referenced(unit &u) const {
-    m_unit->mark_referenced(u);
+    m_iounit->mark_referenced(u);
 }
 
 
@@ -223,7 +226,7 @@ std::string read_statement::do_generate(unit const &u) const {
     auto const preamble = std::format(
         "  io_loadrecord({});\n"
         "  io_selectformat(fmt{});\n",
-        m_unit->generate_value(), m_format);
+        m_iounit->generate_value(), m_format);
 
     auto inputs = std::string{};
     for (auto const &item : m_items) {
@@ -265,7 +268,8 @@ std::string read_statement::do_generate(unit const &u) const {
 }
 
 void read_statement::do_mark_referenced(unit &u) const {
-    m_unit->mark_referenced(u);
+    m_iounit->mark_referenced(u);
+    u.mark_symbol_referenced(symbol_name{m_format});
     mark_io_list_referenced(m_items, u);
 }
 
@@ -329,6 +333,7 @@ std::string type_statement::do_generate(unit const &u) const {
 }
 
 void type_statement::do_mark_referenced(unit &u) const {
+    u.mark_symbol_referenced(symbol_name{m_format});
     mark_io_list_referenced(m_items, u);
 }
 

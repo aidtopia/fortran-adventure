@@ -224,7 +224,7 @@ class parser {
         expected<bool> begin_subprogram(symbol_name const &name);
         expected<bool> end_subprogram();
 
-        void add_label(statement_number_t number);
+        expected<bool> add_branch_target(statement_number_t number);
 
         // Hacks for when we need to peek ahead one token.
         bool accept(keyword kw);

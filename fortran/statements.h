@@ -101,6 +101,7 @@ class goto_statement : public basic_statement {
             basic_statement(), m_target(target) {}
     private:
         std::string do_generate(unit const &u) const override;
+        void do_mark_referenced(unit &u) const override;
 
         statement_number_t m_target;
 };
@@ -120,17 +121,6 @@ class computed_goto_statement : public basic_statement {
 
         expression_t m_expression;
         std::vector<statement_number_t> m_targets;
-};
-
-class format_statement : public basic_statement {
-    public:
-        explicit format_statement(std::string format) :
-            basic_statement(), m_format(format) {}
-
-    private:
-        std::string do_generate(unit const &u) const override;
-
-        std::string m_format;
 };
 
 class if_statement : public basic_statement {
@@ -169,14 +159,14 @@ class numeric_if_statement : public basic_statement {
 
 class open_statement : public basic_statement {
     public:
-        open_statement(expression_t unit, std::filesystem::path const &name) :
-            basic_statement(), m_unit(unit), m_name(name) {}
+        open_statement(expression_t iounit, std::filesystem::path const &name) :
+            basic_statement(), m_iounit(iounit), m_name(name) {}
 
     private:
         std::string do_generate(unit const &u) const override;
         void do_mark_referenced(unit &u) const override;
 
-        expression_t m_unit;
+        expression_t m_iounit;
         std::filesystem::path m_name;
 };
 
@@ -193,16 +183,16 @@ class pause_statement : public basic_statement {
 class read_statement : public basic_statement {
     public:
         read_statement(
-            expression_t unit,
+            expression_t iounit,
             statement_number_t format,
             io_list_t const &items
-        ) : m_unit(unit), m_format(format), m_items(items) {}
+        ) : m_iounit(iounit), m_format(format), m_items(items) {}
 
     private:
         std::string do_generate(unit const &u) const override;
         void do_mark_referenced(unit &u) const override;
 
-        expression_t        m_unit;
+        expression_t        m_iounit;
         statement_number_t  m_format;
         io_list_t           m_items;
 };
