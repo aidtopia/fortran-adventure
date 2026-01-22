@@ -15,6 +15,16 @@ namespace aid::fortran {
 namespace {
 
     static inline std::string_view operator_function(operator_t op) {
+        // The DEC PDP-10 Fortran IV Programmer's Reference says:
+        // "Logical expressions are evaluated by combining the full word values
+        // of P and Q (...) using the appropriate logical operator.  The result
+        // is TRUE if it is arithmetically negative and FALSE if it is
+        // arithmetically positive or zero."
+        // In other words, the logical operations are actually implemented as
+        // the corresponding bitwise operations on the values, and if you
+        // interpret the result as a logical, you get the same result.  We do
+        // the same by having the logic_xxx operators produce the same code as
+        // the bit_xxx operators would.
         switch (op) {
             case operator_t::none:          return "not an operator";
             case operator_t::negate:        return "neg";

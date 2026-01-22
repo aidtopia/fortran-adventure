@@ -588,7 +588,6 @@ typedef void (*psub6)(word_t*,word_t*,word_t*,word_t*,word_t*,word_t*);
 // Helpers for processing expressions:
 word_t fixsign(word_t x) { return (x << (64-36)) >> (64-36); }
 word_t neg(word_t x) { return -x; }
-word_t not(word_t x) { return logical(x < 0); }
 word_t bitnot(word_t x) { return ~x; }
 word_t add(word_t a, word_t b) { return fixsign(a + b); }
 word_t sub(word_t a, word_t b) { return fixsign(a - b); }

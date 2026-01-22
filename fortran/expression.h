@@ -13,7 +13,7 @@ enum class operator_t {
     negate,
     posigate,       // unary +
     logic_not,
-    bit_not,
+    bit_not,  // same as ones complement
     // binary
     add, subtract, multiply, divide,
     // remainder,      // not in Fortran

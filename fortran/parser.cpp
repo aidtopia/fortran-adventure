@@ -1527,11 +1527,19 @@ parser::expected<parser::openkey> parser::parse_open_keyword() {
 
 parser::expected<operator_t> parser::parse_operator() {
     // There are few operators, and they're short, so let's code the tree.
+    // Numeric Operators
     if (accept('+')) return operator_t::add;
     if (accept('-')) return operator_t::subtract;
     if (accept('*')) return accept('*') ? operator_t::exponentiate
                                         : operator_t::multiply;
     if (accept('/')) return operator_t::divide;
+
+    // Comparison and Logical Operators.
+    // Note that Fortran IV defines .NOT., .AND., .OR., .XOR., and .EQV. as
+    // logical operators, so we return logic_not, logic_and, etc.
+    // However, the DEC compiler implements those as bitwise operations
+    // performed on the numeric values, so we'll switch to bit_not, bit_and,
+    // etc. in code generation.
     if (accept('.')) {
         if (accept('G')) {
             if (accept('T') && accept('.')) return operator_t::compare_gt;
