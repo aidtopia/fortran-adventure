@@ -40,10 +40,6 @@ class program {
         // provide enough access to the symbol tables to let them be free.
         void print_symbol_table(std::ostream &out) const;
 
-        // TODO:  Replace "extract" with "select" or something like that.  And
-        // it probably shouldn't return pointers to the units.
-        std::vector<unit const *> extract_subprograms() const;
-
         void mark_referenced();
 
         // Iteration through the subprograms.

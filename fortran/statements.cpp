@@ -140,7 +140,7 @@ void do_statement::do_mark_referenced(unit &u) const {
         statement->mark_referenced(u);
     }
     // A DO statement should NOT mark the number of its final statement as a
-    // referenced symbol.
+    // is_referenced symbol.
 }
 
 

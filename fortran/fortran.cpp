@@ -98,11 +98,11 @@ int main(int argc, char const *argv[]) {
     // MIDDLE END --------------
     // Here we do "passes" over `program`, shaping it as needed.
 
-    // Determine what's referenced or unreferenced by marking the program as
-    // referenced, which will recursively mark everything that's reachable.
+    // Determine what's is_referenced or unreferenced by marking the program as
+    // is_referenced, which will recursively mark everything that's reachable.
     program.mark_referenced();
 
-    // TODO:  Walk the (referenced parts of) the program to assign addresses
+    // TODO:  Walk the (is_referenced parts of) the program to assign addresses
     // for all of the variables.
 
 

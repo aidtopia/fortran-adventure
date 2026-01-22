@@ -1730,7 +1730,7 @@ void parser::add_label(statement_number_t number) {
         symbol.type = datatype::none;
     }
     // We're adding labels only for targets of GOTO, numerical IF, etc., so by
-    // definition, they are referenced.
+    // definition, they are is_referenced.
     symbol.referenced = true;
     m_subprogram.update_symbol(symbol);
 }

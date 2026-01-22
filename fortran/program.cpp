@@ -55,15 +55,6 @@ void program::print_symbol_table(std::ostream &out) const {
     }
 }
 
-std::vector<unit const *> program::extract_subprograms() const {
-    auto subprograms = std::vector<unit const *>{};
-    subprograms.reserve(m_subprograms.size());
-    for (auto const &subprogram : m_subprograms) {
-        subprograms.push_back(&subprogram);
-    }
-    return subprograms;
-}
-
 void program::mark_referenced() {
     auto is_called = [] (symbol_info const &symbol) {
         return
@@ -83,7 +74,7 @@ void program::mark_referenced() {
             to_process.erase(name);
             if (auto sub = find_subprogram(name); sub) {
                 sub->mark_referenced();
-                // Add newly referenced callees.
+                // Add newly is_referenced callees.
                 for (auto const &callee : sub->extract_symbols(is_called)) {
                     if (!processed.contains(callee.name)) {
                         to_process.insert(callee.name);

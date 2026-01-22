@@ -115,7 +115,8 @@ void unit::print_symbol_table(std::ostream &out) const {
     auto constexpr k_init_data  = k_table_width - k_subtotal;
     auto constexpr k_format     = k_address + 1 + k_dimens + 1 + k_init_data;
 
-    std::print(out, "{:-^{}}\n", unit_name(), k_table_width);
+    auto const name = std::format("{}{}", m_referenced ? "" : "!", unit_name());
+    std::print(out, "{:-^{}}\n", name, k_table_width);
     std::print(out,
         "{:-^{}}{:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}}\n",
         "", k_bang, "symbol", k_symbol, "kind", k_kind, "comdat", k_comdat,

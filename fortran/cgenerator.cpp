@@ -11,6 +11,11 @@
 #include <fstream>
 #include <print>
 #include <set>
+#include <string>
+#include <string_view>
+
+using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 namespace aid::fortran {
 
@@ -31,14 +36,13 @@ namespace {
         return std::format("v{}", sym.name);
     }
     static std::string base(symbol_name const &block) {
-        return block.empty() ? std::string{"memory"}
-                             : std::format("common{}", block);
+        return block.empty() ? "memory"s : std::format("common{}", block);
     }
     static std::string base(symbol_info const &sym) {
         return base(sym.comdat);
     }
     static std::string macro_defined(std::string_view c_stmt) {
-        auto constexpr directive = std::string_view("#define ");
+        auto constexpr directive = "#define "sv;
         if (!c_stmt.starts_with(directive)) return {};
         auto const begin = c_stmt.cbegin() + directive.size();
         auto it = begin;
@@ -189,20 +193,19 @@ std::string c_generator::generate_program(program const &prog) {
 std::string c_generator::generate_builtins(program const &prog) {
     auto result = std::string{};
 
-    // Find all functions and subroutines that are referenced in any unit.
+    // Find all functions and subroutines that are is_referenced in any unit.
     auto undefined_subs = std::set<symbol_name>{};
-    auto const subprograms = prog.extract_subprograms();
-    for (auto const *pu : subprograms) {
+    for (auto const &u : prog) {
         auto const subs_refed_by_unit =
-            pu->extract_symbols(is_referenced_subprogram);
+            u.extract_symbols(is_referenced_subprogram);
         for (auto const &s : subs_refed_by_unit) {
             undefined_subs.insert(s.name);
         }
     }
 
     // Remove ones that are defined.
-    for (auto const *pu : subprograms) {
-        undefined_subs.erase(pu->unit_name());
+    for (auto const &u : prog) {
+        undefined_subs.erase(u.unit_name());
     }
 
     // Provide built-in ones. This is in a separate pass so that user-defined
@@ -226,23 +229,21 @@ std::string c_generator::generate_builtins(program const &prog) {
 }
 
 std::string c_generator::generate_prototypes(program const &prog) {
-    auto result = std::string{};
-
-    auto const subprograms = prog.extract_subprograms();
-    if (subprograms.empty()) return result;
-
-    result += "// Function prototypes for the program's subprograms\n";
-    for (auto const *pu : subprograms) {
-        result += std::format("{};\n", generate_function_signature(*pu));
+    auto result =
+        std::string{};
+    auto prototypes = std::string{};
+    for (auto const &sub : prog) {
+        prototypes += std::format("{};\n", generate_function_signature(sub));
     }
-
-    return result;
+    if (prototypes.empty()) return {};
+    return "// Function prototypes for the program's subprograms\n"s +
+           prototypes;
 }
 
 std::string c_generator::generate_common_blocks(program const &prog) {
     auto const comdats = common_block_sizes(prog);
     if (comdats.empty()) return {};
-    auto result = std::string{"// Common Blocks\n"};
+    auto result = "// Common Blocks\n"s;
     for (auto const &[block, size] : common_block_sizes(prog)) {
         if (size == 0uz) continue;
         result +=
@@ -302,9 +303,9 @@ int main(int argc, const char *argv[]) {{
 
 std::string c_generator::generate_subprograms(program const &prog) {
     auto result = std::string{};
-    auto const subprograms = prog.extract_subprograms();
-    for (auto const *pu : subprograms) {
-        result += generate_unit(*pu);
+    for (auto const &subprogram : prog) {
+        if (!subprogram.is_referenced()) continue;
+        result += generate_unit(subprogram);
     }
     return result;
 }
@@ -417,7 +418,7 @@ std::string c_generator::generate_dummies(unit const &u) {
 std::string c_generator::generate_common_variable_declarations(unit const &u) {
     auto const commons = u.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return {};
-    auto result = std::string{" // Common variables\n"};
+    auto result = " // Common variables\n"s;
     auto block = symbol_name{};
     auto offset = machine_word_t{0};
     for (auto const &common : commons) {
@@ -427,7 +428,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
             result += generate_variable_definition(common, offset);
             add_initializer(block, offset, common.init_data);
         }
-        // Its size still matters to the layout, even if it wasn't referenced.
+        // Its size still matters to the layout, even if it wasn't is_referenced.
         offset += size(common);
         // Note that we do NOT bump m_memsize because the space for the common
         // variables is already accounted for by the comdat blocks.
@@ -438,7 +439,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
 std::string c_generator::generate_local_variable_declarations(unit const &u) {
     auto const locals = u.extract_symbols(is_referenced_local);
     if (locals.empty()) return {};
-    auto result = std::string{" // Local variables\n"};
+    auto result = " // Local variables\n"s;
     for (auto const &local : locals) {
         result += generate_variable_definition(local, m_memsize);
         add_initializer(local.comdat, m_memsize, local.init_data);
@@ -449,7 +450,7 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
 
 std::string c_generator::generate_format_specifications(unit const &u) {
     if (u.formats().empty()) return {};
-    auto result = std::string{" // IO format specifications\n"};
+    auto result = " // IO format specifications\n"s;
     for (auto const format : u.formats()) {
         result +=
             std::format(" static const char fmt{}[] = \"{}\";\n",
