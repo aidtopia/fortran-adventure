@@ -82,17 +82,6 @@ class unit {
             return implicit_type(name.front());
         }
 
-        unsigned comdat_count(symbol_name const &block) const {
-            if (auto it = m_comdats.find(block); it != m_comdats.end()) {
-                return it->second;
-            }
-            return 0u;
-        }
-
-        void set_comdat_count(symbol_name const &block, unsigned count) {
-            m_comdats[block] = count;
-        }
-
         virtual void mark_referenced();
         virtual void print_symbol_table(std::ostream &out) const;
 
@@ -116,9 +105,6 @@ class unit {
         symbol_name  m_unit_name;
         symbol_table m_symbols;
         symbol_table m_shadows;  // temporary symbols that might shadow others
-        // We store info about the common blocks (comdats) separately from the
-        // symbols because they're in distinct name spaces.
-        comdat_table m_comdats;
         format_table m_formats;
         statement_block m_code;
         bool m_referenced = false;

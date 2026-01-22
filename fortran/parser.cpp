@@ -370,14 +370,13 @@ parser::expected<statement_t> parser::parse_common() {
             }
         }
 
-        auto index = m_subprogram.comdat_count(block);
         do {
             auto name = parse_identifier();
             if (name.empty()) continue;
             auto symbol = m_subprogram.find_symbol(name);
             symbol.kind = symbolkind::common;
             symbol.comdat = block;
-            symbol.index = ++index;
+            symbol.index = next_common_count(block);
             if (symbol.type == datatype::unknown) {
                 symbol.type = m_subprogram.implicit_type(name);
             }
@@ -402,7 +401,6 @@ parser::expected<statement_t> parser::parse_common() {
 
             m_subprogram.update_symbol(symbol);
         } while (accept(','));
-        m_subprogram.set_comdat_count(block, index);
     } while (!at_eol());
 
     return nullptr;
@@ -1734,6 +1732,7 @@ parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {
                      m_program.name(), name);
     }
     m_subprogram = unit{name};
+    m_common_counts.clear();
     m_phase = phase1;
     m_current_subprogram_is_main = true;
     return true;
@@ -1758,6 +1757,7 @@ parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
             name, m_subprogram.unit_name());
     }
     m_subprogram = unit{name};
+    m_common_counts.clear();
     m_phase = phase1;
     return true;
 }

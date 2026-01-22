@@ -16,6 +16,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <set>
 #include <span>
@@ -240,6 +241,13 @@ class parser {
                                                 : m_statement.end();
         }
 
+        unsigned next_common_count(symbol_name block) {
+            if (!m_common_counts.contains(block)) {
+                m_common_counts[block] = 0u;
+            }
+            return ++m_common_counts[block];
+        }
+
         bool at_eol() const { return m_it == m_statement.end(); }
         char current() const { return at_eol() ? '\0' : *m_it; }
         bool match(char ch) const { return current() == ch; }
@@ -299,6 +307,7 @@ class parser {
         std::string::const_iterator m_it;
         program m_program;
         unit m_subprogram;
+        std::map<symbol_name, unsigned> m_common_counts;
         phase_t m_phase = phase0;
         bool m_current_subprogram_is_main = false;
         statement_number_t m_statement_number;
