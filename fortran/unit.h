@@ -22,6 +22,9 @@ using comdat_table = std::map<symbol_name, unsigned>;
 
 using format_table = std::map<symbol_name, field_list_t>;
 
+// Maps the name of a symbolkind::label to an index in m_code
+using target_table = std::map<symbol_name, std::size_t>;
+
 // A unit is a program, subroutine, or function.
 class unit {
     public:
@@ -34,7 +37,7 @@ class unit {
         unit &operator=(unit const &rhs) = delete;
 
         bool empty() const { return m_symbols.empty() && m_code.empty(); }
-        bool is_referenced() const { return m_referenced; }
+        bool is_referenced() const { return m_reachable; }
 
         // The name of this unit (i.e., the program, subroutine, or function).
         symbol_name unit_name() const { return m_unit_name; }
@@ -84,7 +87,7 @@ class unit {
             return implicit_type(name.front());
         }
 
-        virtual void mark_referenced();
+        virtual void mark_reachable();
         virtual void print_symbol_table(std::ostream &out) const;
 
     private:
@@ -109,7 +112,8 @@ class unit {
         symbol_table m_shadows;  // temporary symbols that might shadow others
         format_table m_formats;
         statement_block m_code;
-        bool m_referenced = false;
+        target_table m_targets;
+        bool m_reachable = false;
 };
 
 // Predicates for extract_symbols.

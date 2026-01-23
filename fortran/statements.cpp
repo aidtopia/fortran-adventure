@@ -50,7 +50,7 @@ std::string arithmetic_function_definition_statement::do_generate(
         m_definition->generate_value());
 }
 
-void arithmetic_function_definition_statement::do_mark_referenced(
+void arithmetic_function_definition_statement::do_mark_reachable(
     unit &u
 ) const {
     // The definition statement does not reference the macro name.  It just
@@ -76,7 +76,7 @@ std::string assignment_statement::do_generate(unit const &) const {
         m_lvalue->generate_reference(), m_rhs->generate_value());
 }
 
-void assignment_statement::do_mark_referenced(unit &u) const {
+void assignment_statement::do_mark_reachable(unit &u) const {
     m_lvalue->mark_referenced(u);
     m_rhs->mark_referenced(u);
 }
@@ -87,7 +87,7 @@ std::string call_statement::do_generate(unit const &) const {
     return std::format("CALL(sub{}({}));", m_name, format_arguments(m_args));
 }
 
-void call_statement::do_mark_referenced(unit &u) const {
+void call_statement::do_mark_reachable(unit &u) const {
     u.mark_symbol_referenced(m_name);
     for (auto const &arg : m_args) {
         arg->mark_referenced(u);
@@ -133,14 +133,14 @@ std::string do_statement::do_generate(unit const &u) const {
     );
 }
 
-void do_statement::do_mark_referenced(unit &u) const {
+void do_statement::do_mark_reachable(unit &u) const {
     assert(!m_index_control.index.empty());
     mark_index_control_referenced(m_index_control, u);
     for (auto const &statement : m_body) {
-        statement->mark_referenced(u);
+        statement->mark_reachable(u);
     }
     // A DO statement should NOT mark the number of its final statement as a
-    // is_referenced symbol.
+    // referenced symbol.
 }
 
 
@@ -148,7 +148,7 @@ std::string goto_statement::do_generate(unit const &) const {
     return std::format("goto L{};", m_target);
 }
 
-void goto_statement::do_mark_referenced(unit &u) const {
+void goto_statement::do_mark_reachable(unit &u) const {
     u.mark_symbol_referenced(symbol_name{m_target});
 }
 
@@ -157,7 +157,7 @@ std::string computed_goto_statement::do_generate(unit const &) const {
         m_expression->generate_value(), cases());
 }
 
-void computed_goto_statement::do_mark_referenced(unit &u) const {
+void computed_goto_statement::do_mark_reachable(unit &u) const {
     m_expression->mark_referenced(u);
     for (auto const &target : m_targets) {
         u.mark_symbol_referenced(symbol_name{target});
@@ -181,9 +181,9 @@ std::string if_statement::do_generate(unit const &u) const {
         m_condition->generate_value(), m_then->generate(u));
 }
 
-void if_statement::do_mark_referenced(unit &u) const {
+void if_statement::do_mark_reachable(unit &u) const {
     m_condition->mark_referenced(u);
-    m_then->mark_referenced(u);
+    m_then->mark_reachable(u);
 }
 
 
@@ -198,7 +198,7 @@ std::string numeric_if_statement::do_generate(unit const &) const {
         m_negative, m_zero, m_positive);
 }
 
-void numeric_if_statement::do_mark_referenced(unit &u) const {
+void numeric_if_statement::do_mark_reachable(unit &u) const {
     m_condition->mark_referenced(u);
     u.mark_symbol_referenced(symbol_name{m_negative});
     u.mark_symbol_referenced(symbol_name{m_zero});
@@ -211,7 +211,7 @@ std::string open_statement::do_generate(unit const &) const {
         m_iounit->generate_value(), escape_file_name(m_name));
 }
 
-void open_statement::do_mark_referenced(unit &u) const {
+void open_statement::do_mark_reachable(unit &u) const {
     m_iounit->mark_referenced(u);
 }
 
@@ -267,7 +267,7 @@ std::string read_statement::do_generate(unit const &u) const {
     return std::format("{{\n{}{} }}", preamble, inputs);
 }
 
-void read_statement::do_mark_referenced(unit &u) const {
+void read_statement::do_mark_reachable(unit &u) const {
     m_iounit->mark_referenced(u);
     u.mark_symbol_referenced(symbol_name{m_format});
     mark_io_list_referenced(m_items, u);
@@ -278,7 +278,7 @@ std::string return_statement::do_generate(unit const &) const {
     return m_retval.empty() ? "return;" : std::format("return *v{};", m_retval);
 }
 
-void return_statement::do_mark_referenced(unit &u) const {
+void return_statement::do_mark_reachable(unit &u) const {
     if (!m_retval.empty()) u.mark_symbol_referenced(m_retval);
 }
 
@@ -332,7 +332,7 @@ std::string type_statement::do_generate(unit const &u) const {
     return std::format("{{\n{}{} }}", preamble, outputs);
 }
 
-void type_statement::do_mark_referenced(unit &u) const {
+void type_statement::do_mark_reachable(unit &u) const {
     u.mark_symbol_referenced(symbol_name{m_format});
     mark_io_list_referenced(m_items, u);
 }

@@ -31,14 +31,21 @@ class basic_statement {
         std::string generate(unit const &u) const;
 
         // Uses the unit interface to mark symbols as referenced.
-        void mark_referenced(unit &u);
+        void mark_reachable(unit &u);
+
+        bool is_reachable() const { return m_reachable; }
+
+        // may_proceed() means the execution could possibly proceed to the next
+        // statement after executing this one.  Essentially, it's false for
+        // unconditional GOTO, numeric IF, RETURN, and STOP.
+        virtual bool may_proceed() const { return true; }
 
     private:
         virtual std::string do_generate(unit const &) const;
-        virtual void do_mark_referenced(unit &) const;
+        virtual void do_mark_reachable(unit &) const;
 
         statement_number_t m_number = no_statement_number;
-        bool m_referenced = false;
+        bool m_reachable = false;
 };
 
 // Using shared_ptr instead of unique_ptr because units, which contain

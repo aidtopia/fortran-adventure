@@ -15,13 +15,13 @@ std::string basic_statement::generate(unit const &u) const {
     //return std::format("L{0}: puts(\"L{0}:\"); {1}", m_number, code);
 }
 
-void basic_statement::mark_referenced(unit &u) {
-    if (m_referenced) return;
-    m_referenced = true;
-    do_mark_referenced(u);
+void basic_statement::mark_reachable(unit &u) {
+    if (m_reachable) return;
+    m_reachable = true;
+    do_mark_reachable(u);
 }
 
 std::string basic_statement::do_generate(unit const &) const { return ""; }
-void basic_statement::do_mark_referenced(unit &) const {}
+void basic_statement::do_mark_reachable(unit &) const {}
 
 }

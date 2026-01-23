@@ -55,7 +55,7 @@ void program::print_symbol_table(std::ostream &out) const {
     }
 }
 
-void program::mark_referenced() {
+void program::mark_reachable() {
     auto is_called = [] (symbol_info const &symbol) {
         return
             symbol.referenced && (
@@ -73,7 +73,7 @@ void program::mark_referenced() {
         for (auto name : this_round) {
             to_process.erase(name);
             if (auto sub = find_subprogram(name); sub) {
-                sub->mark_referenced();
+                sub->mark_reachable();
                 // Add newly referenced callees.
                 for (auto const &callee : sub->extract_symbols(is_called)) {
                     if (!processed.contains(callee.name)) {

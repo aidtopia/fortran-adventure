@@ -4,6 +4,7 @@
 #include <format>
 #include <memory>
 #include <print>
+#include <set>
 
 namespace aid::fortran {
 
@@ -49,6 +50,13 @@ void unit::infer_types() {
 }
 
 void unit::add_statement(statement_t statement) {
+    if (m_targets.empty()) m_targets[symbol_name{0}] = 0uz;
+    if (auto const number = statement->get_statement_number();
+        number != no_statement_number
+    ) {
+        assert(!m_targets.contains(number) && "duplicate statement number!");
+        m_targets[symbol_name{number}] = m_code.size();
+    }
     m_code.push_back(statement);
 }
 
@@ -95,11 +103,39 @@ void unit::add_format(statement_number_t number, field_list_t &&fields) {
     add_format(symbol_name{number}, std::move(fields));
 }
 
-void unit::mark_referenced() {
-    if (m_referenced) return;  // already done
-    m_referenced = true;
-    for (auto const &statement : m_code) {
-        statement->mark_referenced(*this);
+void unit::mark_reachable() {
+    if (m_reachable) return;  // already done
+    m_reachable = true;
+    if (m_code.empty()) return;
+
+    auto is_branch_target = [] (symbol_info const &s) {
+        return s.kind == symbolkind::label && s.referenced;
+    };
+
+    auto processed = std::set<symbol_name>{};
+    auto to_process = std::set<symbol_name>{symbol_name{0}};
+
+    while (!to_process.empty()) {
+        auto const this_round = to_process;  // copy to avoid iter invalidation
+        for (auto target : this_round) {
+            to_process.erase(target);
+            if (auto it = m_targets.find(target); it != m_targets.end()) {
+                auto index = it->second;
+                while (index < m_code.size()) {
+                    auto const &statement = m_code[index++];
+                    if (statement->is_reachable()) break;
+                    statement->mark_reachable(*this);
+                    if (!statement->may_proceed()) break;
+                }
+                // Add newly discovered branch targets.
+                for (auto const &label : extract_symbols(is_branch_target)) {
+                    if (!processed.contains(label.name)) {
+                        to_process.insert(label.name);
+                    }
+                }
+                processed.insert(target);
+            }
+        }
     }
 }
 
@@ -119,7 +155,7 @@ void unit::print_symbol_table(std::ostream &out) const {
     auto constexpr k_init_data  = k_table_width - k_subtotal;
     auto constexpr k_format     = k_init_data;
 
-    auto const name = std::format("{}{}", m_referenced ? "" : "!", unit_name());
+    auto const name = std::format("{}{}", m_reachable ? "" : "!", unit_name());
     std::print(out, "{:-^{}}\n", name, k_table_width);
     std::print(out,
         "{:-^{}}{:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}}\n",

@@ -40,7 +40,7 @@ class program {
         // provide enough access to the symbol tables to let them be free.
         void print_symbol_table(std::ostream &out) const;
 
-        void mark_referenced();
+        void mark_reachable();
 
         // Iteration through the subprograms.
         using units = std::vector<unit>;

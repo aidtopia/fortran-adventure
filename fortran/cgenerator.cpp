@@ -378,9 +378,9 @@ std::string c_generator::generate_function_signature(unit const &u) {
 
 std::string c_generator::generate_statements(unit const &u) {
     auto result = std::string{};
-
     auto macros_to_undef = std::vector<std::string>{};
     for (auto const &statement : u.code()) {
+        if (!statement->is_reachable()) continue;
         if (auto const c_stmt = statement->generate(u); !c_stmt.empty()) {
             result += std::format(" {}\n", c_stmt);
             if (auto const macro = macro_defined(c_stmt); !macro.empty()) {
