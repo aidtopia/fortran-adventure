@@ -16,6 +16,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <set>
@@ -251,6 +252,9 @@ class parser {
         bool at_eol() const { return m_it == m_statement.end(); }
         char current() const { return at_eol() ? '\0' : *m_it; }
         bool match(char ch) const { return current() == ch; }
+        bool match(std::string_view s) const {
+            return std::string_view(m_it, m_statement.end()).starts_with(s);
+        }
         bool match_letter() const {
             auto const ch = current();
             return 'A' <= ch && ch <= 'Z';
@@ -265,10 +269,22 @@ class parser {
             return ('A' <= ch && ch <= 'Z') || ('0' <= ch && ch <= '9');
         }
         void advance() { if (!at_eol()) ++m_it; }
+        void advance(std::size_t count) {
+            auto const limit = static_cast<std::size_t>(
+                std::distance(m_it, m_statement.cend()));
+            m_it += std::min(count, limit);
+        }
         char consume() { return at_eol() ? '\0' : *m_it++; }
         bool accept(char ch) {
             if (match(ch)) {
                 advance();
+                return true;
+            }
+            return false;
+        }
+        bool accept(std::string_view s) {
+            if (match(s)) {
+                advance(s.size());
                 return true;
             }
             return false;
@@ -292,7 +308,6 @@ class parser {
         static void trim_leading_form_feeds(std::string &line);
         static void crush_statement(std::string &s);
 
-        static keyword look_up_keyword(std::string_view token);
         static openkey look_up_open_keyword(std::string_view token);
 
         template <typename T, typename... Args>

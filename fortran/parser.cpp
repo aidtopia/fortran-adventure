@@ -1363,17 +1363,31 @@ parser::expected<expression_t> parser::parse_argument() {
 }
 
 parser::expected<parser::keyword> parser::parse_keyword() {
-    // Keywords may contain only letters, no digits.
-    auto const begin = position();
-    auto token = std::string_view(begin, position());
-    while (match_letter()) {
-        advance();
-        token = std::string_view(begin, position());
-        if (auto const kw = look_up_keyword(token); kw != keyword::unknown) {
-            return kw;
-        }
+    // Remember that spaces are removed from the statement, so there's no
+    // separator between adjacent keywords or identifiers (e.g., "GOTO" and
+    // "IMPLICITINTEGER"), so we recognize the first prefix that matches a
+    // keyword.  Switching on the first character slashes the number of keywords
+    // we have to try.
+    if (at_eol()) return error("statement ended while expecting a keyword");
+    switch (current()) {
+        #define RECOG(KEYWORD) if (accept(#KEYWORD)) return keyword::##KEYWORD
+        case 'A': RECOG(ACCEPT);                                break;
+        case 'C': RECOG(CALL); RECOG(COMMON); RECOG(CONTINUE);  break;
+        case 'D': RECOG(DATA); RECOG(DIMENSION); RECOG(DO);     break;
+        case 'E': RECOG(END); RECOG(EXTERNAL);                  break;
+        case 'F': RECOG(FORMAT); RECOG(FUNCTION);               break;
+        case 'G': RECOG(GOTO);                                  break;
+        case 'I': RECOG(IF); RECOG(IMPLICIT); RECOG(INTEGER);   break;
+        case 'L': RECOG(LOGICAL);                               break;
+        case 'O': RECOG(OPEN);                                  break;
+        case 'P': RECOG(PAUSE); RECOG(PROGRAM);                 break;
+        case 'R': RECOG(READ); RECOG(REAL); RECOG(RETURN);      break;
+        case 'S': RECOG(STOP); RECOG(SUBROUTINE);               break;
+        case 'T': RECOG(TYPE);                                  break;
+        #undef RECOG
     }
-    return error("expected a keyword but found '{}'", token);
+    return error("expected a keyword at '{}'",
+        std::string_view(position(), m_statement.end()));
 }
 
 parser::expected<variable_list_t> parser::parse_variable_list() {
@@ -1955,39 +1969,6 @@ void parser::crush_statement(std::string &s) {
         *target++ = *source;
     }
     s.resize(std::distance(s.begin(), target));
-}
-
-parser::keyword parser::look_up_keyword(std::string_view token) {
-    static auto const map = std::map<std::string_view, keyword>{
-        {"ACCEPT",      keyword::ACCEPT     },
-        {"CALL",        keyword::CALL       },
-        {"COMMON",      keyword::COMMON     },
-        {"CONTINUE",    keyword::CONTINUE   },
-        {"DATA",        keyword::DATA       },
-        {"DIMENSION",   keyword::DIMENSION  },
-        {"DO",          keyword::DO         },
-        {"END",         keyword::END        },
-        {"EXTERNAL",    keyword::EXTERNAL   },
-        {"FORMAT",      keyword::FORMAT     },
-        {"FUNCTION",    keyword::FUNCTION   },
-        {"GOTO",        keyword::GOTO       },
-        {"IF",          keyword::IF         },
-        {"IMPLICIT",    keyword::IMPLICIT   },
-        {"INTEGER",     keyword::INTEGER    },
-        {"LOGICAL",     keyword::LOGICAL    },
-        {"OPEN",        keyword::OPEN       },
-        {"PAUSE",       keyword::PAUSE      },
-        {"PROGRAM",     keyword::PROGRAM    },
-        {"SUBROUTINE",  keyword::SUBROUTINE },
-        {"READ",        keyword::READ       },
-        {"REAL",        keyword::REAL       },
-        {"RETURN",      keyword::RETURN     },
-        {"STOP",        keyword::STOP       },
-        {"TYPE",        keyword::TYPE       }
-    };
-
-    auto const it = map.find(token);
-    return (it != map.end()) ? it->second : keyword::unknown;
 }
 
 parser::openkey parser::look_up_open_keyword(std::string_view token) {
