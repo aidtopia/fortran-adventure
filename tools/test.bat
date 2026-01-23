@@ -16,9 +16,11 @@ IF %TESTRESULT% NEQ 0 GOTO DONE
 ECHO:
 ECHO Compiling the C code...
 CD /D target
-SET OPTOPT=/Od
+REM OPTOPT is "optimizer options"
+SET OPTOPT=/Od /WX
+REM Turning on optimization triggers warnings about unreachable code. These are
+REM harmless, but it means we can't use /WX (treat warnings as errors).
 REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy
-REM TODO:  Add /WX to the compiler options.
 FOR %%f IN (ADV*.c) DO ^
 cl /nologo /std:c11 /W4 %OPTOPT% /Zi /Fd%%~nf.pdb %%f /link /INCREMENTAL:NO
 SET TESTRESULT=%ERRORLEVEL%
@@ -28,7 +30,7 @@ ECHO:
 ECHO Running Adventure...
 FOR %%d IN (a*.dat) DO SET ADVENDATA=%%d
 FOR %%f IN (target\adv*.exe) DO ^
-ECHO %%f -t0:00 -d1-JAN-1977 -fTEXT=%ADVENDATA% > target\run.bat
+ECHO %%f -t0:00 -d1-JAN-1977 -fTEXT=%ADVENDATA% -CAPS > target\run.bat
 SET TESTRESULT=%ERRORLEVEL%
 IF %TESTRESULT% NEQ 0 GOTO DONE
 TYPE target\run.bat
