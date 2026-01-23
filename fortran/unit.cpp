@@ -8,6 +8,10 @@
 
 namespace aid::fortran {
 
+// entry is a fake symbol name used in unit::m_targets to track the first
+// statement in the subprogram.
+auto constexpr entry = symbol_name{"_ENTRY"};
+
 unit::~unit() {}
 
 void unit::update_symbol(symbol_info const &symbol) {
@@ -50,7 +54,7 @@ void unit::infer_types() {
 }
 
 void unit::add_statement(statement_t statement) {
-    if (m_targets.empty()) m_targets[symbol_name{0}] = 0uz;
+    if (m_targets.empty()) m_targets[entry] = 0uz;
     if (auto const number = statement->get_statement_number();
         number != no_statement_number
     ) {
@@ -113,12 +117,13 @@ void unit::mark_reachable() {
     };
 
     auto processed = std::set<symbol_name>{};
-    auto to_process = std::set<symbol_name>{symbol_name{0}};
+    auto to_process = std::set<symbol_name>{entry};
 
     while (!to_process.empty()) {
         auto const this_round = to_process;  // copy to avoid iter invalidation
         for (auto target : this_round) {
             to_process.erase(target);
+            processed.insert(target);
             if (auto it = m_targets.find(target); it != m_targets.end()) {
                 auto index = it->second;
                 while (index < m_code.size()) {
@@ -133,7 +138,6 @@ void unit::mark_reachable() {
                         to_process.insert(label.name);
                     }
                 }
-                processed.insert(target);
             }
         }
     }

@@ -72,6 +72,7 @@ void program::mark_reachable() {
         auto const this_round = to_process;  // copy to avoid iter invalidation
         for (auto name : this_round) {
             to_process.erase(name);
+            processed.insert(name);
             if (auto sub = find_subprogram(name); sub) {
                 sub->mark_reachable();
                 // Add newly referenced callees.
@@ -80,7 +81,6 @@ void program::mark_reachable() {
                         to_process.insert(callee.name);
                     }
                 }
-                processed.insert(sub->unit_name());
             }
         }
     }
