@@ -43,8 +43,7 @@ void unit::mark_symbol_referenced(symbol_name const &name) {
 }
 
 void unit::infer_types() {
-    for (std::size_t i = 0; i < m_symbols.size(); ++i) {
-        auto &symbol = m_symbols[i];
+    for (auto &symbol : m_symbols) {
         if (symbol.type == datatype::unknown) {
             symbol.type = implicit_type(symbol.name);
         }

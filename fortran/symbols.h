@@ -182,8 +182,19 @@ class symbol_table {
             std::function<bool (symbol_info const &)> predicate
         ) const;
 
+        // Iteration through the symbols.
+        using symbols_t = std::vector<symbol_info>;
+        using iterator = symbols_t::iterator;
+        using const_iterator = symbols_t::const_iterator;
+        const_iterator cbegin() const { return m_symbols.cbegin(); }
+        const_iterator cend()   const { return m_symbols.cend(); }
+        const_iterator  begin() const { return cbegin(); }
+        const_iterator  end()   const { return cend(); }
+        iterator        begin()       { return m_symbols.begin(); }
+        iterator        end()         { return m_symbols.end(); }
+
     private:
-        std::vector<symbol_info> m_symbols;
+        symbols_t m_symbols;
         std::map<symbol_name, std::size_t> m_index;
 };
 

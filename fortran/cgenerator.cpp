@@ -193,7 +193,7 @@ std::string c_generator::generate_program(program const &prog) {
 std::string c_generator::generate_builtins(program const &prog) {
     auto result = std::string{};
 
-    // Find all functions and subroutines that are is_referenced in any unit.
+    // Find all functions and subroutines that are referenced in any unit.
     auto undefined_subs = std::set<symbol_name>{};
     for (auto const &u : prog) {
         auto const subs_refed_by_unit =
@@ -427,7 +427,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
             result += generate_variable_definition(common, offset);
             add_initializer(block, offset, common.init_data);
         }
-        // Its size still matters to the layout, even if it wasn't is_referenced.
+        // Its size still matters to the layout, even if it wasn't referenced.
         offset += size(common);
         // Note that we do NOT bump m_memsize because the space for the common
         // variables is already accounted for by the comdat blocks.
