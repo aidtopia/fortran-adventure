@@ -37,7 +37,7 @@ class unit {
         unit &operator=(unit const &rhs) = delete;
 
         bool empty() const { return m_symbols.empty() && m_code.empty(); }
-        bool is_referenced() const { return m_reachable; }
+        bool is_reachable() const { return m_reachable; }
 
         // The name of this unit (i.e., the program, subroutine, or function).
         symbol_name unit_name() const { return m_unit_name; }

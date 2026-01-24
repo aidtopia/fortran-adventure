@@ -229,10 +229,9 @@ std::string c_generator::generate_builtins(program const &prog) {
 }
 
 std::string c_generator::generate_prototypes(program const &prog) {
-    auto result =
-        std::string{};
     auto prototypes = std::string{};
     for (auto const &sub : prog) {
+        if (!sub.is_reachable()) continue;
         prototypes += std::format("{};\n", generate_function_signature(sub));
     }
     if (prototypes.empty()) return {};
@@ -304,7 +303,7 @@ int main(int argc, const char *argv[]) {{
 std::string c_generator::generate_subprograms(program const &prog) {
     auto result = std::string{};
     for (auto const &subprogram : prog) {
-        if (!subprogram.is_referenced()) continue;
+        if (!subprogram.is_reachable()) continue;
         result += generate_unit(subprogram);
     }
     return result;
