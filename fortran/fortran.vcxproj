@@ -170,6 +170,7 @@
     <ClInclude Include="expression.h" />
     <ClInclude Include="expressions.h" />
     <ClInclude Include="fieldlist.h" />
+    <ClInclude Include="implicit.h" />
     <ClInclude Include="indexcontrol.h" />
     <ClInclude Include="iolist.h" />
     <ClInclude Include="machine.h" />

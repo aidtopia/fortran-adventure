@@ -5,6 +5,7 @@
 #include "datalist.h"
 #include "expressions.h"
 #include "fieldlist.h"
+#include "implicit.h"
 #include "iolist.h"
 #include "program.h"
 #include "unit.h"
@@ -226,6 +227,10 @@ class parser {
 
         expected<bool> add_branch_target(statement_number_t number);
 
+        datatype inferred_type(symbol_info const &symbol) const;
+        void infer_type_and_update(symbol_info &symbol);
+        void infer_types();
+
         // Hacks for when we need to peek ahead one token.
         bool accept(keyword kw);
         bool accept(operator_t op);
@@ -321,10 +326,11 @@ class parser {
         std::string::const_iterator m_it;
         program m_program;
         unit m_subprogram;
+        implicit m_implicit;
         std::map<symbol_name, unsigned> m_common_counts;
         phase_t m_phase = phase0;
         bool m_current_subprogram_is_main = false;
-        statement_number_t m_statement_number;
+        statement_number_t m_statement_number = no_statement_number;
 };
 
 }

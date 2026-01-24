@@ -25,7 +25,8 @@ using format_table = std::map<symbol_name, field_list_t>;
 // Maps the name of a symbolkind::label to an index in m_code
 using target_table = std::map<symbol_name, std::size_t>;
 
-// A unit is a program, subroutine, or function.
+// A unit (think "translation unit") contains the symbols and statements for
+// a program, subroutine, or function (i.e., Fortran subprograms).
 class unit {
     public:
         explicit unit(symbol_name name = symbol_name{""})
@@ -49,8 +50,8 @@ class unit {
 
         // Arithmetic function definition parameters are temporary symbols that
         // might shadow an actual symbol in the unit.
-        void add_shadows(std::span<const symbol_name> names);
-        void remove_shadows();
+        void push_shadow(symbol_info &&symbol);
+        void pop_shadows();
 
         // A shortcut for ensuring the symbol's `referenced` flag is set.
         void mark_symbol_referenced(symbol_name const &name);
@@ -77,33 +78,12 @@ class unit {
         void add_statement(statement_t statement);
         statement_block const &code() const { return m_code; }
 
-        void set_implicit_type(char prefix, datatype type);
-
-        datatype implicit_type(char prefix) const {
-            if (prefix < 'A' || 'Z' < prefix) return datatype::unknown;
-            return m_implicit_type_table[prefix - 'A'];
-        }
-        datatype implicit_type(symbol_name const &name) const {
-            return implicit_type(name.front());
-        }
-
+        // TODO:  mark_reachable should be a free function.
         void mark_reachable();
+        // TODO:  print_symbol_table should be a free function.
         void print_symbol_table(std::ostream &out) const;
 
     private:
-        std::array<datatype, 26> m_implicit_type_table = {
-            // 'A' through 'H':
-            datatype::REAL, datatype::REAL, datatype::REAL, datatype::REAL,
-            datatype::REAL, datatype::REAL, datatype::REAL, datatype::REAL,
-            // 'I' through 'N':
-            datatype::INTEGER, datatype::INTEGER, datatype::INTEGER,
-            datatype::INTEGER, datatype::INTEGER, datatype::INTEGER,
-            // 'O' through 'Z':
-            datatype::REAL, datatype::REAL, datatype::REAL, datatype::REAL,
-            datatype::REAL, datatype::REAL, datatype::REAL, datatype::REAL,
-            datatype::REAL, datatype::REAL, datatype::REAL, datatype::REAL
-        };
-
         static std::string format_dimension(dimension const &d);
         static std::string format_word(machine_word_t w, datatype type);
 
@@ -140,6 +120,9 @@ inline bool is_referenced_local(symbol_info const &a) {
 }
 inline bool is_referenced_subprogram(symbol_info const &a) {
     return a.kind == symbolkind::subprogram && a.referenced;
+}
+inline bool has_unknown_type(symbol_info const &a) {
+    return a.type == datatype::unknown;
 }
 
 inline bool by_block_index(symbol_info const &a, symbol_info const &b) {

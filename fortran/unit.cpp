@@ -22,32 +22,18 @@ void unit::update_symbol(symbol_info &&symbol) {
     m_symbols.update(std::move(symbol));
 }
 
-void unit::add_shadows(std::span<const symbol_name> names) {
-    assert(m_shadows.empty());
-    auto symbol = m_shadows.get(symbol_name{""});
-    symbol.kind = symbolkind::shadow;
-    for (auto const &name : names) {
-        symbol.type = implicit_type(name);
-        symbol.name = name;
-        m_shadows.update(symbol);
-    }
+void unit::push_shadow(symbol_info &&symbol) {
+    assert(symbol.kind == symbolkind::shadow);
+    m_shadows.update(std::move(symbol));
 }
 
-void unit::remove_shadows() {
+void unit::pop_shadows() {
     m_shadows.clear();
 }
 
 void unit::mark_symbol_referenced(symbol_name const &name) {
     auto const i = m_symbols.find(name);
     if (i != symbol_table::npos) m_symbols[i].referenced = true;
-}
-
-void unit::infer_types() {
-    for (auto &symbol : m_symbols) {
-        if (symbol.type == datatype::unknown) {
-            symbol.type = implicit_type(symbol.name);
-        }
-    }
 }
 
 void unit::add_statement(statement_t statement) {
@@ -59,11 +45,6 @@ void unit::add_statement(statement_t statement) {
         m_targets[symbol_name{number}] = m_code.size();
     }
     m_code.push_back(statement);
-}
-
-void unit::set_implicit_type(char prefix, datatype type) {
-    if (prefix < 'A' || 'Z' < prefix) return;
-    m_implicit_type_table[prefix - 'A'] = type;
 }
 
 bool unit::has_symbol(symbol_name const &name) const {

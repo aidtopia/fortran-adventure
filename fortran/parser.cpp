@@ -185,7 +185,7 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         default:
             // At this transition from phase2 to phase3, we can determine the
             // types for any symbols that are still unknown.
-            m_subprogram.infer_types();
+            infer_types();
             m_phase = phase3;
             break;
     }
@@ -341,9 +341,7 @@ parser::parse_arithmetic_function_definition(symbol_name const &name) {
     }
     auto symbol = m_subprogram.find_symbol(name);
     symbol.kind = symbolkind::internal;
-    if (symbol.type == datatype::unknown) {
-        symbol.type = m_subprogram.implicit_type(name);
-    }
+    symbol.type = inferred_type(symbol);
     symbol.index = static_cast<unsigned>(parameters.value().size());
     m_subprogram.update_symbol(symbol);
 
@@ -369,9 +367,7 @@ parser::expected<statement_t> parser::parse_common() {
             symbol.kind = symbolkind::common;
             symbol.comdat = block;
             symbol.index = next_common_count(block);
-            if (symbol.type == datatype::unknown) {
-                symbol.type = m_subprogram.implicit_type(name);
-            }
+            symbol.type = inferred_type(symbol);
 
             auto shape = symbol.shape;
             if (match('(')) {
@@ -410,9 +406,7 @@ parser::expected<statement_t> parser::parse_data() {
         auto const data_end = data_list.value().end();
         for (auto const &item : variable_list.value()) {
             auto symbol = m_subprogram.find_symbol(item.variable);
-            if (symbol.type == datatype::unknown) {
-                symbol.type = m_subprogram.implicit_type(item.variable);
-            }
+            symbol.type = inferred_type(symbol);
             if (symbol.kind == symbolkind::common) {
                 // We let this go with just a warning because Adventure relies
                 // on it and it doesn't seem to cause any harm.  I noticed that
@@ -540,9 +534,7 @@ parser::expected<statement_t> parser::parse_implicit() {
         }
         auto prefixes = parse_implicit_prefixes();
         if (!prefixes) return error_of(std::move(prefixes));
-        for (auto const ch : prefixes.value()) {
-            m_subprogram.set_implicit_type(ch, type);
-        }
+        for (auto const ch : prefixes.value()) m_implicit.set(ch, type);
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after IMPLICIT statement");
     return nullptr;
@@ -639,10 +631,7 @@ parser::expected<statement_t> parser::parse_assignment() {
         return error("statement was misidentified as an assignment?!");
     }
 
-    if (symbol.type == datatype::unknown) {
-        symbol.type = m_subprogram.implicit_type(name);
-        m_subprogram.update_symbol(symbol);
-    }
+    infer_type_and_update(symbol);
 
     auto rhs = parse_expression();
     if (!rhs) return error_of(std::move(rhs));
@@ -894,7 +883,7 @@ parser::expected<statement_t> parser::parse_read() {
 
     auto list = parse_io_list();
     if (!list) return error_of(std::move(list));
-    auto const io_list = std::move(list).value();
+    auto io_list = std::move(list).value();
     if (!at_eol()) return error("unexpected token after READ statement");
 
     return make<read_statement>(std::move(unit), format, std::move(io_list));
@@ -1054,10 +1043,7 @@ parser::expected<expression_t> parser::parse_atom() {
             if (symbol.kind == symbolkind::external) {
                 return std::make_shared<external_node>(name);
             }
-            if (symbol.type == datatype::unknown) {
-                symbol.type = m_subprogram.implicit_type(name);
-                m_subprogram.update_symbol(symbol);
-            }
+            infer_type_and_update(symbol);
             return std::make_shared<variable_node>(name);
         }
 
@@ -1075,10 +1061,7 @@ parser::expected<expression_t> parser::parse_atom() {
             // Either the program has an error, or this is actually a subprogram
             // (specifically a FUNCTION) that hasn't yet been defined.
             symbol.kind = symbolkind::subprogram;
-            if (symbol.type == datatype::unknown) {
-                // Yeah, this is almost certainly a FUNCTION.
-                symbol.type = m_subprogram.implicit_type(name);
-            }
+            symbol.type = inferred_type(symbol);
             assert(symbol.index == 0);
             symbol.index = static_cast<unsigned>(args.size());
             m_subprogram.update_symbol(symbol);
@@ -1104,11 +1087,19 @@ parser::expected<expression_t> parser::parse_atom() {
 parser::expected<expression_t> parser::parse_arithmetic_function_expression(
     parameter_list_t const &params
 ) {
-    // The parameter names are in scope only briefly, so we have a special way
-    // to add them to the unit's symbols temporarily.
-    m_subprogram.add_shadows(params);
+    // In theory, any parameter of an arithmetic function may shadow another
+    // symbol that's been declared.  They need to be in scope only while parsing
+    // the expression that defines the function.  So we temporarily add them as
+    // shadows, and them pop them right back off.
+    for (auto const &param : params) {
+        auto symbol = symbol_info{};
+        symbol.name = param;
+        symbol.kind = symbolkind::shadow;
+        symbol.type = inferred_type(symbol);
+        m_subprogram.push_shadow(std::move(symbol));
+    }
     auto const definition = parse_expression();
-    m_subprogram.remove_shadows();
+    m_subprogram.pop_shadows();
     return definition;
 }
 
@@ -1183,10 +1174,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         return error("expected variable name in input-output list");
     }
     auto symbol = m_subprogram.find_symbol(name);
-    if (symbol.type == datatype::unknown) {
-        symbol.type = m_subprogram.implicit_type(name);
-        m_subprogram.update_symbol(symbol);
-    }
+    infer_type_and_update(symbol);
     if (symbol.kind == symbolkind::subprogram ||
         symbol.kind == symbolkind::external
     ) {
@@ -1205,7 +1193,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
     auto induction_symbol = m_subprogram.find_symbol(induction_name);
     if (induction_symbol.type == datatype::unknown) {
         induction_symbol.type = datatype::INTEGER;
-        m_subprogram.update_symbol(induction_symbol);
+        m_subprogram.update_symbol(std::move(induction_symbol));
     }
     auto const induction = std::make_shared<variable_node>(induction_name);
     return io_list_item{
@@ -1343,11 +1331,9 @@ parser::expected<expression_t> parser::parse_argument() {
         // an output argument that should be implicitly declared as a local
         // variable, just like we'd do for the left side of an assignment.)
         auto symbol = m_subprogram.find_symbol(name);
-        if (symbol.type == datatype::unknown) {
-            symbol.type = m_subprogram.implicit_type(name);
-            assert(symbol.kind == symbolkind::local);
-            m_subprogram.update_symbol(symbol);
-        }
+        assert(symbol.kind == symbolkind::local ||
+               symbol.type != datatype::unknown);
+        infer_type_and_update(symbol);
     }
     // Back up and parse the argument as an expression.
     m_it = bookmark;
@@ -1422,10 +1408,7 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
         return error("expected variable name in variable list");
     }
     auto symbol = m_subprogram.find_symbol(name);
-    if (symbol.type == datatype::unknown) {
-        symbol.type = m_subprogram.implicit_type(name);
-        m_subprogram.update_symbol(symbol);
-    }
+    infer_type_and_update(symbol);
     if (symbol.kind == symbolkind::subprogram ||
         symbol.kind == symbolkind::external
     ) {
@@ -1762,6 +1745,7 @@ parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {
     assert(m_phase == phase0);
     assert(!m_program.has_main_subprogram());
     m_subprogram = unit{name};
+    m_implicit.reset();
     m_common_counts.clear();
     m_current_subprogram_is_main = true;
     m_phase = phase1;
@@ -1780,6 +1764,7 @@ parser::expected<bool> parser::end_main_subprogram() {
 parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
     assert(m_phase == phase0);
     m_subprogram = unit{name};
+    m_implicit.reset();
     m_common_counts.clear();
     m_phase = phase1;
     return true;
@@ -1790,6 +1775,27 @@ parser::expected<bool> parser::end_subprogram() {
     m_program.add_subprogram(std::move(m_subprogram));
     m_phase = phase0;
     return true;
+}
+
+datatype parser::inferred_type(symbol_info const &symbol) const {
+    return
+        symbol.type == datatype::unknown ? m_implicit.type_for(symbol.name)
+                                         : symbol.type;
+}
+
+void parser::infer_type_and_update(symbol_info &symbol) {
+    if (symbol.type == datatype::unknown) {
+        symbol.type = m_implicit.type_for(symbol.name);
+        m_subprogram.update_symbol(symbol);
+    }
+}
+
+void parser::infer_types() {
+    auto unknowns = m_subprogram.extract_symbols(has_unknown_type);
+    for (auto &symbol : unknowns) {
+        symbol.type = m_implicit.type_for(symbol.name);
+        m_subprogram.update_symbol(std::move(symbol));
+    }
 }
 
 bool parser::accept(keyword kw) {
