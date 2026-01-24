@@ -12,8 +12,6 @@ namespace aid::fortran {
 // statement in the subprogram.
 auto constexpr entry = symbol_name{"_ENTRY"};
 
-unit::~unit() {}
-
 void unit::update_symbol(symbol_info const &symbol) {
     assert(symbol.kind != symbolkind::shadow);
     m_symbols.update(symbol);

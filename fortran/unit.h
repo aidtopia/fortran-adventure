@@ -30,7 +30,7 @@ class unit {
     public:
         explicit unit(symbol_name name = symbol_name{""})
             : m_unit_name(name) {}
-        virtual ~unit();
+        ~unit() = default;
         unit(unit &&rhs) noexcept = default;
         unit &operator=(unit &&rhs) noexcept = default;
         unit(unit const &rhs) = delete;
@@ -87,8 +87,8 @@ class unit {
             return implicit_type(name.front());
         }
 
-        virtual void mark_reachable();
-        virtual void print_symbol_table(std::ostream &out) const;
+        void mark_reachable();
+        void print_symbol_table(std::ostream &out) const;
 
     private:
         std::array<datatype, 26> m_implicit_type_table = {

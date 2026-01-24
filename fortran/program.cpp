@@ -7,6 +7,10 @@
 
 namespace aid::fortran {
 
+bool program::empty() const {
+    return m_subprograms.empty();
+}
+
 bool program::has_main_subprogram() const {
     if (m_subprograms.empty()) return false;
     if (m_subprograms.front().empty()) return false;
@@ -49,13 +53,14 @@ void program::add_subprogram(unit &&subprogram) {
     m_subprograms.push_back(std::move(subprogram));
 }
 
-void program::print_symbol_table(std::ostream &out) const {
-    for (auto const &sub : m_subprograms) {
-        sub.print_symbol_table(out);
-    }
+unit *program::find_subprogram(symbol_name name) {
+    auto const it = std::find_if(m_subprograms.begin(), m_subprograms.end(),
+        [&name] (unit const &u) { return u.unit_name() == name; });
+    if (it == m_subprograms.end()) return nullptr;
+    return &*it;
 }
 
-void program::mark_reachable() {
+void mark_reachable(program &prog) {
     auto is_called = [] (symbol_info const &symbol) {
         return
             symbol.referenced && (
@@ -66,14 +71,14 @@ void program::mark_reachable() {
 
     auto processed = std::set<symbol_name>{};
     auto to_process = std::set<symbol_name>{};
-    if (!m_subprograms.empty()) to_process.insert(m_subprograms[0].unit_name());
+    if (!prog.empty()) to_process.insert(prog.entry_point().unit_name());
 
     while (!to_process.empty()) {
         auto const this_round = to_process;  // copy to avoid iter invalidation
         for (auto name : this_round) {
             to_process.erase(name);
             processed.insert(name);
-            if (auto sub = find_subprogram(name); sub) {
+            if (auto sub = prog.find_subprogram(name); sub) {
                 sub->mark_reachable();
                 // Add newly referenced callees.
                 for (auto const &callee : sub->extract_symbols(is_called)) {
@@ -86,12 +91,6 @@ void program::mark_reachable() {
     }
 }
 
-unit *program::find_subprogram(symbol_name name) {
-    auto const it = std::find_if(m_subprograms.begin(), m_subprograms.end(),
-        [&name] (unit const &u) { return u.unit_name() == name; });
-    if (it == m_subprograms.end()) return nullptr;
-    return &*it;
-}
 
 std::map<symbol_name, std::size_t> common_block_sizes(program const &prog) {
     // Within a subprogram, a set of variables in the same common block

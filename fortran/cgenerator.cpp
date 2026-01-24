@@ -243,7 +243,7 @@ std::string c_generator::generate_common_blocks(program const &prog) {
     auto const comdats = common_block_sizes(prog);
     if (comdats.empty()) return {};
     auto result = "// Common Blocks\n"s;
-    for (auto const &[block, size] : common_block_sizes(prog)) {
+    for (auto const &[block, size] : comdats) {
         if (size == 0uz) continue;
         result +=
             std::format("word_t * const common{} = &memory[{}]; // [{}];\n",

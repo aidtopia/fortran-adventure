@@ -24,7 +24,10 @@ void save_symbol_table(
                    sym_file_path.string());
         return;
     }
-    program.print_symbol_table(fsymtab);
+
+    for (auto const &sub : program) {
+        sub.print_symbol_table(fsymtab);
+    }
 }
 
 void translate_to_c(
@@ -100,7 +103,7 @@ int main(int argc, char const *argv[]) {
 
     // Determine what code is reachable and what symbols are referenced by
     // marking the program as reachable and letting recursion do the work.
-    program.mark_reachable();
+    mark_reachable(program);
 
     // TODO:  Walk the (referenced parts of) the program to assign addresses
     // for all of the variables.

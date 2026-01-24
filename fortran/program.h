@@ -35,13 +35,6 @@ class program {
         void add_main_subprogram(unit &&subprogram);
         void add_subprogram(unit &&subprogram);
 
-        // Move symbol table printing to free functions that accept either a
-        // single unit or a program.  The unit and program interfaces should
-        // provide enough access to the symbol tables to let them be free.
-        void print_symbol_table(std::ostream &out) const;
-
-        void mark_reachable();
-
         // Iteration through the subprograms.
         using units = std::vector<unit>;
         using iterator = units::iterator;
@@ -53,13 +46,15 @@ class program {
         iterator        begin()       { return m_subprograms.begin(); }
         iterator        end()         { return m_subprograms.end(); }
 
-    private:
+        unit const &entry_point() const { return m_subprograms.front(); }
         unit *find_subprogram(symbol_name name);
 
+    private:
         units m_subprograms;
         std::vector<std::filesystem::path> m_source_files;
 };
 
+void mark_reachable(program &prog);
 std::map<symbol_name, std::size_t> common_block_sizes(program const &prog);
 
 }
