@@ -137,7 +137,7 @@ parser::expected<statement_t>
 parser::parse_identified_statement(keyword kw, statement_number_t number) {
     auto const original_phase = m_phase;
 
-    // In phase 0, we're looking to start the program or subprogram.
+    // In phase 0, we're looking to start the program or another subprogram.
     if (m_phase == phase0) switch (kw) {
         case keyword::PROGRAM:      return parse_program();
         case keyword::INTEGER:      return parse_function(datatype::INTEGER);
@@ -146,6 +146,10 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::SUBROUTINE:   return parse_subroutine();
         default: {
             // Adventure dives right in without a PROGRAM statement.
+            if (m_program.has_main_subprogram()) {
+                return error("cannot implicitly begin a PROGRAM because only "
+                             "one PROGRAM is allowed");
+            }
             auto begin_result = begin_main_subprogram(symbol_name{});
             if (!begin_result) return error_of(std::move(begin_result));
             break;
@@ -223,39 +227,27 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
         case keyword::TYPE:         return parse_type();
     }
 
-    // Phase 5 is like Phase 0, except you cannot have another PROGRAM.  (You
-    // enter Phase 5 when the previous unit reaches its END statement.)
-    if (m_phase == phase5) {
-        switch (kw) {
-            case keyword::INTEGER:
-                if (!accept(keyword::FUNCTION)) break;
-                return parse_function(datatype::INTEGER);
-            case keyword::LOGICAL:
-                if (!accept(keyword::FUNCTION)) break;
-                return parse_function(datatype::LOGICAL);
-            case keyword::FUNCTION:  return parse_function();
-            case keyword::SUBROUTINE:return parse_subroutine();
-        }
-        return error("expected FUNCTION or SUBROUTINE");
-    }
-
     m_phase = original_phase;
     return error("unhandled keyword--wrong phase?");
 }
 
 parser::expected<statement_t> parser::parse_program() {
-    // Adventure doesn't begin with a PROGRAM statement.  In fact, PROGRAM
-    // statements may have been a later addition to Fortran.  Nevertheless,
-    // we handle it in case we get a multi-file source in the wrong order.
     auto const name = parse_identifier();
     if (name.empty()) return error("PROGRAM requires a name");
     if (!at_eol()) return error("unexpected token after PROGRAM statement");
+    if (m_program.has_main_subprogram()) {
+        return error("multiple PROGRAM statements are not allowed ('{}')",
+                     name);
+    }
     auto begin_result = begin_main_subprogram(name);
     if (!begin_result) return error_of(std::move(begin_result));
     return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_function(datatype type) {
+    if (type != datatype::unknown && !accept(keyword::FUNCTION)) {
+        return error("expected 'FUNCTION' after '{}'", type);
+    }
     auto const name = parse_identifier();
     if (name.empty()) return error("FUNCTION requires a name");
     auto params = parse_parameter_list();
@@ -317,7 +309,7 @@ parser::expected<statement_t> parser::parse_subroutine() {
 
 parser::expected<statement_t> parser::parse_end() {
     if (!at_eol()) return error("unexpected token after END statement");
-    if (m_phase == phase0 || m_phase == phase5) {
+    if (m_phase == phase0) {
         return error("END statement while outside translation unit");
     }
     auto end_result =
@@ -1751,7 +1743,7 @@ parser::expected<statement_number_t> parser::parse_statement_number() {
 
 parser::expected<bool> parser::add_branch_target(statement_number_t number) {
     assert(number != no_statement_number);
-    assert(phase0 < m_phase && m_phase < phase5);
+    assert(phase1 <= m_phase && m_phase <= phase4);
     auto symbol =
         m_subprogram.find_symbol(symbol_name{static_cast<unsigned>(number)});
     if (symbol.kind == symbolkind::format) {
@@ -1767,39 +1759,26 @@ parser::expected<bool> parser::add_branch_target(statement_number_t number) {
 }
 
 parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {
-    if (phase0 < m_phase && m_phase < phase5) {
-        return error("cannot nest PROGRAM '{}' within subprogram '{}'",
-                     name, m_subprogram.unit_name());
-    }
-    if (m_program.has_main_subprogram()) {
-        return error("cannot have PROGRAM '{}' and PROGRAM '{}'",
-                     m_program.name(), name);
-    }
+    assert(m_phase == phase0);
+    assert(!m_program.has_main_subprogram());
     m_subprogram = unit{name};
     m_common_counts.clear();
-    m_phase = phase1;
     m_current_subprogram_is_main = true;
+    m_phase = phase1;
     return true;
 }
 
 parser::expected<bool> parser::end_main_subprogram() {
-    if (!m_current_subprogram_is_main ||
-        m_program.has_main_subprogram()
-    ) {
-        return error("internal error while ending main subprogram");
-    }
+    assert(m_current_subprogram_is_main);
+    assert(!m_program.has_main_subprogram());
     m_program.add_main_subprogram(std::move(m_subprogram));
-    m_phase = phase5;
     m_current_subprogram_is_main = false;
+    m_phase = phase0;
     return true;
 }
 
 parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
-    if (phase0 < m_phase && m_phase < phase5) {
-        return error(
-            "cannot nest subprogram '{}'; ensure '{}' has an END statement",
-            name, m_subprogram.unit_name());
-    }
+    assert(m_phase == phase0);
     m_subprogram = unit{name};
     m_common_counts.clear();
     m_phase = phase1;
@@ -1807,8 +1786,9 @@ parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
 }
 
 parser::expected<bool> parser::end_subprogram() {
+    assert(!m_current_subprogram_is_main);
     m_program.add_subprogram(std::move(m_subprogram));
-    m_phase = phase5;
+    m_phase = phase0;
     return true;
 }
 

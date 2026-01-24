@@ -128,8 +128,7 @@ class parser {
             phase1,  // IMPLICIT and FORMAT
             phase2,  // specifications and FORMAT
             phase3,  // arithmetic function definition, FORMAT, and DATA
-            phase4,  // executable statement, FORMAT, DATA, and END
-            phase5   // FUNCTION or SUBROUTINE
+            phase4   // executable statement, FORMAT, DATA, and END
         };
 
         enum class openkey { unknown, UNIT, ACCESS, FILE, NAME=FILE };
