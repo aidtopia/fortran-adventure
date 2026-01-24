@@ -52,34 +52,6 @@ namespace {
         return std::string(begin, it);
     }
 
-    static constexpr std::size_t size(symbol_info const &symbol) {
-        switch (symbol.kind) {
-            // Regular variables
-            case symbolkind::local:
-            case symbolkind::common:
-            case symbolkind::argument:
-            case symbolkind::retval:
-                // array_size is poorly named.  Scalars return 1.
-                return array_size(symbol.shape);
-
-            // These don't require program memory
-            case symbolkind::subprogram:
-            case symbolkind::internal:
-            case symbolkind::external:
-            case symbolkind::label:
-                return 0uz;
-
-            // It's weird that the caller is even asking
-            case symbolkind::shadow:
-                assert(false);
-                return 0uz;
-
-            default:
-                assert(!"forget to handle a new symbolkind?");
-                return 0uz;
-        }
-    }
-
     struct builtin_t {
         symbol_name name;
         std::string_view code;
@@ -397,9 +369,10 @@ std::string c_generator::generate_statements(unit const &u) {
 std::string c_generator::generate_return_value(unit const &u) {
     auto const retvals = u.extract_symbols(is_return_value); 
     if (retvals.empty()) return {};
+    assert(retvals.size() == 1);
     auto const &retval = retvals.front();
     auto const addr = m_memsize;
-    m_memsize += size(retval);
+    m_memsize += memory_size(retval);
     return std::format(" word_t *{} = &memory[{}];  // return value\n",
                        name(retval), addr);
 }
@@ -428,7 +401,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
             add_initializer(block, offset, common.init_data);
         }
         // Its size still matters to the layout, even if it wasn't referenced.
-        offset += size(common);
+        offset += memory_size(common);
         // Note that we do NOT bump m_memsize because the space for the common
         // variables is already accounted for by the comdat blocks.
     }
@@ -442,7 +415,7 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     for (auto const &local : locals) {
         result += generate_variable_definition(local, m_memsize);
         add_initializer(local.comdat, m_memsize, local.init_data);
-        m_memsize += size(local);
+        m_memsize += memory_size(local);
     }
     return result;
 }
@@ -479,7 +452,7 @@ std::string c_generator::generate_array_definition(
 ) {
     auto result =
         std::format(" word_t * const {} = &{}[{}]; // [{}]",
-                    name(var), base(var), offset, size(var));
+                    name(var), base(var), offset, memory_size(var));
     if (!var.init_data.empty()) {
         if (var.init_data.size() <= 3) {
             result += std::format(" = {{{}", var.init_data[0]);
@@ -703,18 +676,18 @@ void io_open(word_t unit, const char *name) {
 }
 
 void io_loadrecord(word_t unit) {
-    const size_t size = sizeof(io.record) - 1;  // reserve room for terminator
+    const size_t memory_size = sizeof(io.record) - 1;  // reserve room for terminator
     size_t i = 0;
     FILE *source = io.units[unit];
     assert(source != NULL);
     if (source != NULL) {
-        while (i < size) {
+        while (i < memory_size) {
             int ch = fgetc(source);
             if (ch == EOF || ch == '\n') break;
             if (io.upcase && unit == 0 && islower(ch)) ch = toupper(ch);
             io.record[i++] = (char)ch;
         }
-        assert(0 <= i && i < size);
+        assert(0 <= i && i < memory_size);
     }
     io.record[i] = '\0';
     io.psrc = io.pdst = io.record;
@@ -782,7 +755,7 @@ const char *io_readliteral(int width, const char *psrc, word_t *pvar) {
         value <<= 7;
         value |= (word_t)(*psrc++ & 0x7F);
     }
-    // Pad with blanks on the right to a minimum size of 5.
+    // Pad with blanks on the right to a minimum memory_size of 5.
     for (; i < 5; ++i) {
         value <<= 7;
         value |= ' ';
@@ -1085,7 +1058,7 @@ char host_endianness() {
     return '?';
 }
 
-void host_tidyfname(char *fname, size_t size, char const *defext) {
+void host_tidyfname(char *fname, size_t memory_size, char const *defext) {
     if (fname == NULL) return;
     const char *source = fname;
     const char *slash = NULL;
@@ -1121,7 +1094,7 @@ void host_tidyfname(char *fname, size_t size, char const *defext) {
     const bool needext =
         target != fname && defext != NULL && *defext != '\0' &&
         (dot == NULL ? true : slash == NULL ? false : dot < slash);
-    if (needext && defext != NULL && target + strlen(defext) < fname + size) {
+    if (needext && defext != NULL && target + strlen(defext) < fname + memory_size) {
         dot = target;
         if (*defext != '.') *target++ = '.';
         while (*defext != '\0') *target++ = *defext++;

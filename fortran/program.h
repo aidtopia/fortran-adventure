@@ -55,6 +55,7 @@ class program {
 };
 
 void mark_reachable(program &prog);
+void assign_addresses(program &prog);
 std::map<symbol_name, std::size_t> common_block_sizes(program const &prog);
 
 }

@@ -105,9 +105,9 @@ int main(int argc, char const *argv[]) {
     // marking the program as reachable and letting recursion do the work.
     mark_reachable(program);
 
-    // TODO:  Walk the (referenced parts of) the program to assign addresses
-    // for all of the variables.
-
+    // Assign addresses to all of the (referenced) variables that will need
+    // space in the program's memory.
+    assign_addresses(program);
 
     // BACK END ----------------
 

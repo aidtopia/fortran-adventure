@@ -29,6 +29,10 @@ enum class datatype {
     subptr    // a pointer to a subprogram for indirect call or evaluation
 };
 
+// Returns the memory required (in machine words) to store a value of the given
+// type.
+std::size_t memory_size(datatype type);
+
 enum class symbolkind {
     local,      // a variable scoped to the program or subprogram
     common,     // a variable in a common block
@@ -41,20 +45,6 @@ enum class symbolkind {
     format,     // statement number of a FORMAT specification
     shadow      // a parameter in an arithmetic function definition
 };
-
-struct dimension {
-    bool operator==(dimension const &rhs) const = default;
-    machine_word_t constexpr size() const { return 1 + maximum - minimum; }
-
-    machine_word_t minimum = 1;
-    machine_word_t maximum = 0;
-};
-
-using array_shape = std::vector<dimension>;
-
-std::size_t array_size(array_shape const &shape);
-
-using init_data_t = std::vector<machine_word_t>;
 
 class symbol_name {
     public:
@@ -105,6 +95,22 @@ class symbol_name {
         std::array<char, 2> m_padding;
 };
 
+struct dimension {
+    bool operator==(dimension const &rhs) const = default;
+    machine_word_t constexpr size() const { return 1 + maximum - minimum; }
+
+    machine_word_t minimum = 1;
+    machine_word_t maximum = 0;
+};
+
+using array_shape = std::vector<dimension>;
+
+// Returns the number of elements in the array given the shape.  If `shape` is
+// empty, it's a scalar, and the result is 1.
+std::size_t array_size(array_shape const &shape);
+
+using init_data_t = std::vector<machine_word_t>;
+
 struct symbol_info {
     symbol_name name;
     symbolkind  kind = symbolkind::local;
@@ -133,7 +139,9 @@ struct symbol_info {
     // compiler).
 };
 
-// The meaning of symbol_info::index depends on symbol_info::kind:
+// Program memory requirement, in machine words, for the symbol if it's a
+// variable, otherwise 0.
+std::size_t memory_size(symbol_info const &symbol);
 
 class symbol_table {
     public:

@@ -1,9 +1,32 @@
 #include "symbols.h"
 
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 
 namespace aid::fortran {
+
+std::size_t memory_size(datatype type) {
+    switch (type) {
+        case datatype::INTEGER:
+        case datatype::LITERAL:
+        case datatype::LOGICAL:
+        case datatype::REAL:
+        case datatype::subptr :
+            return 1;
+        case datatype::DOUBLE:
+        case datatype::COMPLEX:
+            assert(!"values > 1 machine word are not currently supported");
+            return 2;
+        case datatype::unknown:
+        case datatype::none:
+            assert(!"suspicious!");
+            return 0;
+        default:
+            assert(!"forget to handle a new datatype?");
+            return 0;
+    }
+}
 
 std::size_t array_size(array_shape const &shape) {
     auto size = std::size_t{1};
@@ -11,6 +34,30 @@ std::size_t array_size(array_shape const &shape) {
         size *= dim.maximum - dim.minimum + 1;
     }
     return size;
+}
+
+std::size_t memory_size(symbol_info const &symbol) {
+    switch (symbol.kind) {
+        case symbolkind::local:
+        case symbolkind::common:
+        case symbolkind::argument:
+        case symbolkind::retval:
+            return memory_size(symbol.type) * array_size(symbol.shape);
+
+        case symbolkind::subprogram:
+        case symbolkind::internal:
+        case symbolkind::external:
+        case symbolkind::label:
+            return 0;
+
+        case symbolkind::shadow:
+            assert(!"suspicious!");
+            return 0;
+
+        default:
+            assert(!"forget to handle a new symbolkind?");
+            return 0;
+    }
 }
 
 symbol_info symbol_table::get(symbol_name const &name) const {

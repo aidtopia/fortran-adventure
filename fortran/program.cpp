@@ -91,6 +91,9 @@ void mark_reachable(program &prog) {
     }
 }
 
+void assign_addresses(program &/*prog*/) {
+    // TODO
+}
 
 std::map<symbol_name, std::size_t> common_block_sizes(program const &prog) {
     // Within a subprogram, a set of variables in the same common block
@@ -115,7 +118,7 @@ std::map<symbol_name, std::size_t> common_block_sizes(program const &prog) {
                 block = var.comdat;
                 size = 0uz;
             }
-            size += array_size(var.shape);
+            size += memory_size(var);
         }
         if (size > 0uz) update(block, size);
     }
