@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <concepts>
 #include <format>
 #include <functional>
 #include <map>
@@ -54,7 +55,7 @@ class symbol_name {
             m_name(as_name(identifier)), m_padding{'\0'} {}
 
         // Construct a symbol name from a statement number.
-        constexpr symbol_name(unsigned number) :
+        constexpr symbol_name(std::unsigned_integral auto number) :
             m_name(as_name(number)), m_padding{'\0'} {}
 
         auto operator<=>(symbol_name const &rhs) const = default;
@@ -78,7 +79,9 @@ class symbol_name {
             return name;
         }
 
-        static name_t constexpr as_name(unsigned statement_number) {
+        static name_t constexpr as_name(
+            std::unsigned_integral auto statement_number
+        ) {
             char buffer[8];
             auto const result =
                 std::to_chars(buffer, buffer + sizeof(buffer), statement_number);
