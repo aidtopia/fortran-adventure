@@ -212,6 +212,7 @@ std::string c_generator::generate_common_blocks(program const &prog) {
     if (comdats.empty()) return {};
     auto result = "// Common Blocks:\n"s;
     for (auto const &[block, size] : comdats) {
+        if (size == 0) continue;
         result += std::format("// {:<6} [{:6}]\n", block, size);
     }
     return result;
@@ -303,16 +304,23 @@ std::string c_generator::generate_static_initialization() {
             continue;
         }
         if (var.init_data.size() > 1) {
+            // TODO:  Fix this hack.
+            // * Doesn't handle more than 1 dimension.
+            // * Anticipates but doesn't fully support more than one
+            //   machine_word_t per element.
+            // * Unnecessarily initializes elements containing 0, because
+            //   skipping screws up the offsets and creates weird looking
+            //   output.
             auto const &data = var.init_data;
             auto const size = core_size(var);
             auto const elements = array_size(var.shape);
+            auto const i0 = var.shape[0].minimum;
             auto const per_element = core_size(var.type);
             auto offset = 0u;
             for (auto i = 0u; i < elements && offset < size; ++i) {
-                result += std::format(" /*{}[{}]*/", name, i);
+                result += std::format(" /*{}({})*/", name, i + i0);
                 for (auto j = 0u; j < per_element && offset < size; ++j) {
                     auto const value = data[offset];
-                    if (value == 0) continue;
                     result += std::format(" core[{}] = {};",
                                           var.address+offset, value);
                     if (looks_literal(value)) {
