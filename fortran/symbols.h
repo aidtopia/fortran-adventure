@@ -30,9 +30,9 @@ enum class datatype {
     subptr    // a pointer to a subprogram for indirect call or evaluation
 };
 
-// Returns the memory required (in machine words) to store a value of the given
-// type.
-unsigned memory_size(datatype type);
+// Returns the core memory required (in machine words) to store a value of the
+// given type.
+unsigned core_size(datatype type);
 
 enum class symbolkind {
     local,      // a variable scoped to the program or subprogram
@@ -142,9 +142,9 @@ struct symbol_info {
     // compiler).
 };
 
-// Program memory requirement, in machine words, for the symbol if it's a
+// Program core memory requirement, in machine words, for the symbol if it's a
 // variable, otherwise 0.
-unsigned memory_size(symbol_info const &symbol);
+unsigned core_size(symbol_info const &symbol);
 
 class symbol_table {
     public:

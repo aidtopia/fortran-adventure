@@ -147,12 +147,12 @@ std::string c_generator::generate_program(program const &prog) {
 
     return std::format(
         "{}\n"
-        "#define MEMSIZE {}\n\n{}\n"
+        "#define CORESIZE {}\n\n{}\n"
         "{}\n{}\n{}\n{}\n"
         "{}\n{}\n{}\n{}\n"
         "{}\n{}\n",
         external_dependencies(),
-        prog.memory_requirement(), machine_definitions(),
+        prog.core_requirement(), machine_definitions(),
         host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
         prototypes, common_blocks, subprograms, init_function,
         usage_function(), main_function);
@@ -238,7 +238,7 @@ int main(int argc, const char *argv[]) {{
                 case 'F': case 'f': io_addmapping(arg+2); continue;
                 case 'T': case 't': kron_override_time(arg+2); continue;
                 case 'D': case 'd': kron_override_date(arg+2); continue;
-                case 'C': case 'c': core_file_name = arg+2; continue;
+                case 'L': case 'l': core_file_name = arg+2; continue;
                 case 'H': case 'h':
                 case '?':           usage(); return 0;
                 default:
@@ -251,7 +251,7 @@ int main(int argc, const char *argv[]) {{
     }}
     if (core_file_name != NULL && *core_file_name != '\0') {{
         if (!host_loadcore(core_file_name)) {{
-            memset(memory, 0, MEMSIZE*sizeof(word_t));
+            memset(core, 0, CORESIZE*sizeof(word_t));
             initialize_static_data();
         }}
     }} else {{
@@ -294,7 +294,7 @@ std::string c_generator::generate_static_initialization() {
             if (value == 0) continue;
             result +=
                 std::format(
-                    " /*{}*/ for (int i = 0; i < {}; ++i) memory[{}+i] = {};",
+                    " /*{}*/ for (int i = 0; i < {}; ++i) core[{}+i] = {};",
                     name, var.init_data.size(), var.address, value);
             if (looks_literal(value)) {
                 result += std::format(" /*'{}'*/", unpack_literal(value));
@@ -304,16 +304,16 @@ std::string c_generator::generate_static_initialization() {
         }
         if (var.init_data.size() > 1) {
             auto const &data = var.init_data;
-            auto const size = memory_size(var);
+            auto const size = core_size(var);
             auto const elements = array_size(var.shape);
-            auto const per_element = memory_size(var.type);
+            auto const per_element = core_size(var.type);
             auto offset = 0u;
             for (auto i = 0u; i < elements && offset < size; ++i) {
                 result += std::format(" /*{}[{}]*/", name, i);
                 for (auto j = 0u; j < per_element && offset < size; ++j) {
                     auto const value = data[offset];
                     if (value == 0) continue;
-                    result += std::format(" memory[{}] = {};",
+                    result += std::format(" core[{}] = {};",
                                           var.address+offset, value);
                     if (looks_literal(value)) {
                         result +=
@@ -328,7 +328,7 @@ std::string c_generator::generate_static_initialization() {
         assert(var.init_data.size() == 1);
         auto const value = var.init_data.front();
         if (value == 0) continue;
-        result += std::format(" /*{}*/ memory[{}] = {};",
+        result += std::format(" /*{}*/ core[{}] = {};",
                               name, var.address, var.init_data.front());
         if (looks_literal(value)) {
             result += std::format(" /*'{}'*/", unpack_literal(value));
@@ -393,7 +393,7 @@ std::string c_generator::generate_return_value(unit const &u) {
     if (retvals.empty()) return {};
     assert(retvals.size() == 1);
     auto const &retval = retvals.front();
-    return std::format(" word_t *{} = &memory[{}];  // return value\n",
+    return std::format(" word_t *{} = &core[{}];  // return value\n",
                        name(retval), retval.address);
 }
 
@@ -463,8 +463,8 @@ std::string c_generator::generate_variable_definition(
 
 std::string c_generator::generate_array_definition(symbol_info const &var) {
     auto result =
-        std::format(" word_t * const {} = &memory[{}]; // [{}]",
-                    name(var), var.address, memory_size(var));
+        std::format(" word_t * const {} = &core[{}]; // [{}]",
+                    name(var), var.address, core_size(var));
     if (!var.init_data.empty()) {
         auto const &data = var.init_data;
         if (data.size() <= 3) {
@@ -485,7 +485,7 @@ std::string c_generator::generate_array_definition(symbol_info const &var) {
 
 std::string c_generator::generate_scalar_definition(symbol_info const &var) {
     auto result =
-        std::format(" word_t * const {} = &memory[{}];",
+        std::format(" word_t * const {} = &core[{}];",
                     name(var), var.address);
     if (!var.init_data.empty()) {
         result += std::format(" // = {}", var.init_data[0]);
@@ -683,18 +683,18 @@ void io_open(word_t unit, const char *name) {
 }
 
 void io_loadrecord(word_t unit) {
-    const size_t memory_size = sizeof(io.record) - 1;  // reserve room for terminator
+    const size_t bufsize = sizeof(io.record) - 1;  // reserve 1 for terminator
     size_t i = 0;
     FILE *source = io.units[unit];
     assert(source != NULL);
     if (source != NULL) {
-        while (i < memory_size) {
+        while (i < bufsize) {
             int ch = fgetc(source);
             if (ch == EOF || ch == '\n') break;
             if (io.upcase && unit == 0 && islower(ch)) ch = toupper(ch);
             io.record[i++] = (char)ch;
         }
-        assert(0 <= i && i < memory_size);
+        assert(0 <= i && i < bufsize);
     }
     io.record[i] = '\0';
     io.psrc = io.pdst = io.record;
@@ -762,7 +762,7 @@ const char *io_readliteral(int width, const char *psrc, word_t *pvar) {
         value <<= 7;
         value |= (word_t)(*psrc++ & 0x7F);
     }
-    // Pad with blanks on the right to a minimum memory_size of 5.
+    // Pad with blanks on the right to a minimum of 5.
     for (; i < 5; ++i) {
         value <<= 7;
         value |= ' ';
@@ -1050,8 +1050,8 @@ void kron_override_date(const char *p) {
 }
 
 constexpr std::string_view c_generator::host_subsystem() {
-    return R"(// Host subsystem (memory, core images, pause, etc.)
-static word_t memory[MEMSIZE] = {0};
+    return R"(// Host subsystem (core, pause, etc.)
+static word_t core[CORESIZE] = {0};
 
 char host_endianness() {
     #if CHAR_BIT == 8
@@ -1134,11 +1134,11 @@ bool host_dumpcore(const char *file_name) {
         return false;
     }
     host_corehdr hdr = host_coremodel;
-    hdr.count = (uint32_t) MEMSIZE;
+    hdr.count = (uint32_t) CORESIZE;
     hdr.host_endian = host_endianness();
     const bool success =
         fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
-        fwrite(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
+        fwrite(core, sizeof(word_t), hdr.count, core_file) == hdr.count;
     fclose(core_file);
     if (!success) fputs("failed to save core dump", stderr);
     return success;
@@ -1179,9 +1179,9 @@ bool host_loadcore(const char *file_name) {
         hdr.reserved == 0 &&
         hdr.offset >= sizeof(hdr) &&
         hdr.offset % sizeof(word_t) == 0 &&
-        hdr.count <= MEMSIZE &&
+        hdr.count <= CORESIZE &&
         fseek(core_file, hdr.offset, SEEK_SET) == 0 &&
-        fread(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
+        fread(core, sizeof(word_t), hdr.count, core_file) == hdr.count;
     fclose(core_file);
     if (!success) {
         fprintf(stderr, "unable to load core-image '%s'\n", fname);
@@ -1217,7 +1217,7 @@ void usage() {
         "\nOptions:\n\n"
         "-CAPS            Capitalize all letters in the keyboard input\n"
         "                 handler. Disabled by default.\n\n"
-        "-c<file>         Load a core-image file into program memory during\n"
+        "-l<file>         Load a core-image file into program memory during\n"
         "                 initialization.\n\n"
         "-d<date>         Force DATE to return the specified date. Allows\n"
         "                 many formats, but these are recommended:\n"

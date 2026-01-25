@@ -106,7 +106,7 @@ int main(int argc, char const *argv[]) {
     mark_reachable(program);
 
     // Assign addresses to all of the (referenced) variables that will need
-    // space in the program's memory.
+    // space in the program's core (memory).
     assign_addresses(program);
 
     // BACK END ----------------

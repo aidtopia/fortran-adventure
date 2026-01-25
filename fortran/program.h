@@ -49,15 +49,15 @@ class program {
         unit const &entry_point() const { return m_subprograms.front(); }
         unit *find_subprogram(symbol_name name);
 
-        unsigned memory_requirement() const { return m_memory_requirement; }
-        void set_memory_requirement(unsigned size) {
-            m_memory_requirement = size;
+        unsigned core_requirement() const { return m_core_requirement; }
+        void set_core_requirement(unsigned size) {
+            m_core_requirement = size;
         }
 
     private:
         units m_subprograms;
         std::vector<std::filesystem::path> m_source_files;
-        unsigned m_memory_requirement = 0u;
+        unsigned m_core_requirement = 0u;
 };
 
 void mark_reachable(program &prog);

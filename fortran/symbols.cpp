@@ -6,7 +6,7 @@
 
 namespace aid::fortran {
 
-unsigned memory_size(datatype type) {
+unsigned core_size(datatype type) {
     switch (type) {
         case datatype::INTEGER:
         case datatype::LITERAL:
@@ -37,13 +37,13 @@ unsigned array_size(array_shape const &shape) {
     return size;
 }
 
-unsigned memory_size(symbol_info const &symbol) {
+unsigned core_size(symbol_info const &symbol) {
     switch (symbol.kind) {
         case symbolkind::local:
         case symbolkind::common:
         case symbolkind::argument:
         case symbolkind::retval:
-            return memory_size(symbol.type) * array_size(symbol.shape);
+            return core_size(symbol.type) * array_size(symbol.shape);
 
         case symbolkind::subprogram:
         case symbolkind::internal:

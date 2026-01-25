@@ -217,7 +217,6 @@ void open_statement::do_mark_reachable(unit &u) const {
 
 
 std::string pause_statement::do_generate(unit const &) const {
-    // We pass the memory and count to allow a core dump during the pause.
     return std::format("host_pause(\"\\n{}\");\n", escape_string(m_message));
 }
 

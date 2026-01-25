@@ -112,7 +112,7 @@ unsigned assign_addresses(program &prog) {
             auto &retval = retvals.front();
             assert(retval.referenced && "function doesn't return a value!?");
             retval.address = memsize;
-            memsize += memory_size(retval);
+            memsize += core_size(retval);
             sub.update_symbol(std::move(retval));
         }
         if (auto commons = sub.extract_symbols(is_common, by_block_index);
@@ -127,7 +127,7 @@ unsigned assign_addresses(program &prog) {
                     base = comdat_bases[block];
                     offset = 0u;
                 }
-                auto const size = memory_size(common);
+                auto const size = core_size(common);
                 if (common.referenced) {
                     common.address = base + offset;
                     sub.update_symbol(std::move(common));
@@ -142,12 +142,12 @@ unsigned assign_addresses(program &prog) {
         ) {
             for (auto &local : locals) {
                 local.address = memsize;
-                memsize += memory_size(local);
+                memsize += core_size(local);
                 sub.update_symbol(std::move(local));
             }
         }
     }
-    prog.set_memory_requirement(memsize);
+    prog.set_core_requirement(memsize);
     return memsize;
 }
 
@@ -174,7 +174,7 @@ std::map<symbol_name, unsigned> common_block_sizes(program const &prog) {
                 block = var.comdat;
                 size = 0u;
             }
-            size += memory_size(var);
+            size += core_size(var);
         }
         if (size > 0u) update(block, size);
     }

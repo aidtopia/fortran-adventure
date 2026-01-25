@@ -439,7 +439,7 @@ parser::expected<statement_t> parser::parse_data() {
                 auto const upper = std::max(control.init, control.limit);
                 auto const &subscript = item.subscripts[0];
                 auto &init_data = symbol.init_data;
-                init_data.reserve(memory_size(symbol));
+                init_data.reserve(core_size(symbol));
                 auto const &shape = symbol.shape;
                 for (machine_word_t i = control.init;
                      lower <= i && i <= upper;
