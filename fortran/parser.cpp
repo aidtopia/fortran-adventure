@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <print>
 #include <string_view>
@@ -470,11 +471,17 @@ parser::expected<statement_t> parser::parse_data() {
 }
 
 parser::expected<statement_t> parser::parse_dimension() {
+    auto constexpr array_size_limit =
+        std::numeric_limits<decltype(array_size(array_shape{}))>::max() / 4;
     do {
         auto const variable = parse_identifier();
         if (variable.empty()) return error("missing variable in DIMENSION");
         auto shape = parse_array_shape();
         if (!shape) return error_of(std::move(shape));
+        if (array_size(shape.value()) >= array_size_limit) {
+            return error("array {} requires more than {} elements",
+                         variable, array_size_limit);
+        }
         auto symbol = m_subprogram.find_symbol(variable);
         if (symbol.shape == shape.value()) continue;
         if (!symbol.shape.empty()) {

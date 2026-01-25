@@ -32,7 +32,7 @@ enum class datatype {
 
 // Returns the memory required (in machine words) to store a value of the given
 // type.
-std::size_t memory_size(datatype type);
+unsigned memory_size(datatype type);
 
 enum class symbolkind {
     local,      // a variable scoped to the program or subprogram
@@ -110,7 +110,7 @@ using array_shape = std::vector<dimension>;
 
 // Returns the number of elements in the array given the shape.  If `shape` is
 // empty, it's a scalar, and the result is 1.
-std::size_t array_size(array_shape const &shape);
+unsigned array_size(array_shape const &shape);
 
 using init_data_t = std::vector<machine_word_t>;
 
@@ -144,7 +144,7 @@ struct symbol_info {
 
 // Program memory requirement, in machine words, for the symbol if it's a
 // variable, otherwise 0.
-std::size_t memory_size(symbol_info const &symbol);
+unsigned memory_size(symbol_info const &symbol);
 
 class symbol_table {
     public:

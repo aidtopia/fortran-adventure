@@ -56,6 +56,7 @@ class c_generator {
         );
 
         // The runtime support consists of static text.
+        static constexpr std::string_view external_dependencies();
         static constexpr std::string_view machine_definitions();
         static constexpr std::string_view io_subsystem();
         static constexpr std::string_view kron_subsystem();

@@ -140,8 +140,8 @@ std::string c_generator::generate_c(program const &prog) {
 std::string c_generator::generate_program(program const &prog) {
     m_memsize = 0;
     m_init_data.clear();
-    // Argument evaluation order is not specified, so we generate each
-    // portion first and use the std::format to concatenate it all together.
+    // Argument evaluation order in C is not specified, so we generate each
+    // portion first and then use std::format to concatenate it all together.
     auto const builtins      = generate_builtins(prog);
     auto const prototypes    = generate_prototypes(prog);
     auto const common_blocks = generate_common_blocks(prog);
@@ -149,17 +149,19 @@ std::string c_generator::generate_program(program const &prog) {
     auto const init_function = generate_static_initialization();
     auto const main_function = generate_main_function(prog);
 
-    // We generate the memory last, because the required memory size is a
-    // side-effect of generating everything else.
-    auto const memory =
-        std::format("#define MEMSIZE {}\n"
-                    "static word_t memory[MEMSIZE];\n", m_memsize);
+    assert(m_memsize == prog.memory_requirement());
 
-    return std::format("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        machine_definitions(),
+    return std::format(
+        "{}\n"
+        "#define MEMSIZE {}\n\n{}\n"
+        "{}\n{}\n{}\n{}\n"
+        "{}\n{}\n{}\n{}\n"
+        "{}\n{}\n",
+        external_dependencies(),
+        prog.memory_requirement(), machine_definitions(),
         host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
-        prototypes, memory, common_blocks, subprograms,
-        init_function, usage_function(), main_function);
+        prototypes, common_blocks, subprograms, init_function,
+        usage_function(), main_function);
 }
 
 std::string c_generator::generate_builtins(program const &prog) {
@@ -227,7 +229,7 @@ std::string c_generator::generate_common_blocks(program const &prog) {
 
 std::string c_generator::generate_main_function(program const &prog) {
     return std::format(R"(
-void atexit_handler(void) {{ host_savecore(memory, MEMSIZE); }}
+void atexit_handler(void) {{ host_savecore(); }}
 
 int main(int argc, const char *argv[]) {{
     io_init();
@@ -258,7 +260,7 @@ int main(int argc, const char *argv[]) {{
         }}
     }}
     if (core_file_name != NULL && *core_file_name != '\0') {{
-        if (!host_loadcore(core_file_name, memory, MEMSIZE)) {{
+        if (!host_loadcore(core_file_name)) {{
             memset(memory, 0, MEMSIZE*sizeof(word_t));
             initialize_static_data();
         }}
@@ -319,14 +321,16 @@ std::string c_generator::generate_static_initialization() {
 }
 
 std::string c_generator::generate_unit(unit const &u) {
-    return std::format("{} {{\n{}{}{}{}{}{}}}\n\n",
-                       generate_function_signature(u),
-                       generate_return_value(u),
-                       generate_dummies(u),
-                       generate_common_variable_declarations(u),
-                       generate_local_variable_declarations(u),
-                       generate_format_specifications(u),
-                       generate_statements(u));
+    auto const signature = generate_function_signature(u);
+    auto const retval    = generate_return_value(u);
+    auto const dummies   = generate_dummies(u);
+    auto const commons   = generate_common_variable_declarations(u);
+    auto const locals    = generate_local_variable_declarations(u);
+    auto const formats   = generate_format_specifications(u);
+    auto const code      = generate_statements(u);
+    return
+        std::format("{} {{\n{}{}{}{}{}{}}}\n\n",
+            signature, retval, dummies, commons, locals, formats, code);
 }
 
 std::string c_generator::generate_function_signature(unit const &u) {
@@ -372,6 +376,7 @@ std::string c_generator::generate_return_value(unit const &u) {
     assert(retvals.size() == 1);
     auto const &retval = retvals.front();
     auto const addr = m_memsize;
+    assert(addr == retval.address);
     m_memsize += memory_size(retval);
     return std::format(" word_t *{} = &memory[{}];  // return value\n",
                        name(retval), addr);
@@ -413,6 +418,7 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     if (locals.empty()) return {};
     auto result = " // Local variables\n"s;
     for (auto const &local : locals) {
+        assert(local.address == m_memsize);
         result += generate_variable_definition(local, m_memsize);
         add_initializer(local.comdat, m_memsize, local.init_data);
         m_memsize += memory_size(local);
@@ -495,7 +501,7 @@ void c_generator::add_initializer(
     }
 }
 
-constexpr std::string_view c_generator::machine_definitions() {
+constexpr std::string_view c_generator::external_dependencies() {
     return R"(#define __STDC_WANT_LIB_EXT1__ 1
 #include <assert.h>
 #include <ctype.h>
@@ -517,8 +523,11 @@ constexpr std::string_view c_generator::machine_definitions() {
 #else
 #define NORETURN /*noreturn*/
 #endif
+)";
+}
 
-// Definitions for emulating the PDP-10 and its Fortran system.
+constexpr std::string_view c_generator::machine_definitions() {
+    return R"(// Definitions for emulating the PDP-10 and its Fortran system.
 typedef int64_t word_t;
 
 // The PDP-10 LOGICAL uses the sign bit for truth.
@@ -1043,7 +1052,9 @@ void kron_override_date(const char *p) {
 }
 
 constexpr std::string_view c_generator::host_subsystem() {
-    return R"(// Host subsystem (core images, pause, etc.)
+    return R"(// Host subsystem (memory, core images, pause, etc.)
+static word_t memory[MEMSIZE] = {0};
+
 char host_endianness() {
     #if CHAR_BIT == 8
         static const char buffer[sizeof(int)] = { 0x01, 0x02 };
@@ -1058,7 +1069,7 @@ char host_endianness() {
     return '?';
 }
 
-void host_tidyfname(char *fname, size_t memory_size, char const *defext) {
+void host_tidyfname(char *fname, size_t bufsize, char const *defext) {
     if (fname == NULL) return;
     const char *source = fname;
     const char *slash = NULL;
@@ -1094,7 +1105,7 @@ void host_tidyfname(char *fname, size_t memory_size, char const *defext) {
     const bool needext =
         target != fname && defext != NULL && *defext != '\0' &&
         (dot == NULL ? true : slash == NULL ? false : dot < slash);
-    if (needext && defext != NULL && target + strlen(defext) < fname + memory_size) {
+    if (needext && defext != NULL && target + strlen(defext) < fname + bufsize) {
         dot = target;
         if (*defext != '.') *target++ = '.';
         while (*defext != '\0') *target++ = *defext++;
@@ -1118,15 +1129,14 @@ static const host_corehdr host_coremodel = {
     36, 64, '?', '\0', 0, (uint32_t)sizeof(host_corehdr), 0
 };
 
-bool host_dumpcore(const char *file_name, const word_t *memory, word_t count) {
-    if (memory == NULL || count == 0) return false;
+bool host_dumpcore(const char *file_name) {
     FILE *core_file = fopen(file_name, "wb");
     if (core_file == NULL) {
         fprintf(stderr, "cannot open '%s' for writing\n", file_name);
         return false;
     }
     host_corehdr hdr = host_coremodel;
-    hdr.count = (uint32_t) count;
+    hdr.count = (uint32_t) MEMSIZE;
     hdr.host_endian = host_endianness();
     const bool success =
         fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
@@ -1136,17 +1146,16 @@ bool host_dumpcore(const char *file_name, const word_t *memory, word_t count) {
     return success;
 }
 
-bool host_savecore(const word_t *memory, word_t count) {
-    if (memory == NULL || count == 0) return false;
+bool host_savecore() {
     puts("ENTER FILE NAME TO SAVE CORE IMAGE:");
     char fname[260+1] = "";
     if (fgets(fname, sizeof(fname), stdin) == NULL) return false;
     host_tidyfname(fname, sizeof(fname), ".DMP");
     if (*fname == '\0') return false;
-    return host_dumpcore(fname, memory, count);
+    return host_dumpcore(fname);
 }
 
-bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
+bool host_loadcore(const char *file_name) {
     char fname[260+1] = "";
     const size_t len = strlen(file_name);
     if (len >= sizeof(fname)) return false;
@@ -1172,7 +1181,7 @@ bool host_loadcore(const char *file_name, word_t *memory, word_t count) {
         hdr.reserved == 0 &&
         hdr.offset >= sizeof(hdr) &&
         hdr.offset % sizeof(word_t) == 0 &&
-        hdr.count <= count &&
+        hdr.count <= MEMSIZE &&
         fseek(core_file, hdr.offset, SEEK_SET) == 0 &&
         fread(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
     fclose(core_file);

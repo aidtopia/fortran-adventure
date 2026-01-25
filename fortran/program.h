@@ -49,14 +49,20 @@ class program {
         unit const &entry_point() const { return m_subprograms.front(); }
         unit *find_subprogram(symbol_name name);
 
+        unsigned memory_requirement() const { return m_memory_requirement; }
+        void set_memory_requirement(unsigned size) {
+            m_memory_requirement = size;
+        }
+
     private:
         units m_subprograms;
         std::vector<std::filesystem::path> m_source_files;
+        unsigned m_memory_requirement = 0u;
 };
 
 void mark_reachable(program &prog);
-void assign_addresses(program &prog);
-std::map<symbol_name, std::size_t> common_block_sizes(program const &prog);
+unsigned assign_addresses(program &prog);
+std::map<symbol_name, unsigned> common_block_sizes(program const &prog);
 
 }
 

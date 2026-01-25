@@ -91,36 +91,92 @@ void mark_reachable(program &prog) {
     }
 }
 
-void assign_addresses(program &/*prog*/) {
-    // TODO
+unsigned assign_addresses(program &prog) {
+    auto memsize = 0u;
+    auto const comdat_sizes = common_block_sizes(prog);
+    auto comdat_bases = std::map<symbol_name, unsigned>{};
+    for (auto const &[block, size] : comdat_sizes) {
+        auto const base = memsize;
+        memsize += size;
+        comdat_bases[block] = base;
+    }
+
+    // In Fortran IV, recursion and re-entrancy are not allowed because local
+    // variables are not allocated on a stack.  All variables in the program
+    // have static storage.
+    for (auto &sub : prog) {
+        if (auto retvals = sub.extract_symbols(is_return_value);
+            !retvals.empty()
+        ) {
+            assert(retvals.size() == 1);
+            auto &retval = retvals.front();
+            assert(retval.referenced && "function doesn't return a value!?");
+            retval.address = memsize;
+            memsize += memory_size(retval);
+            sub.update_symbol(std::move(retval));
+        }
+        if (auto commons = sub.extract_symbols(is_common, by_block_index);
+            !commons.empty()
+        ) {
+            auto block = symbol_name{};
+            auto base = 0u;
+            auto offset = 0u;
+            for (auto &common : commons) {
+                if (block != common.comdat) {
+                    block = common.comdat;
+                    base = comdat_bases[block];
+                    offset = 0u;
+                }
+                auto const size = memory_size(common);
+                if (common.referenced) {
+                    common.address = base + offset;
+                    sub.update_symbol(std::move(common));
+                }
+                offset += size;  // even if not referenced!
+                assert(comdat_sizes.contains(block) &&
+                       offset <= comdat_sizes.find(block)->second);
+            }
+        }
+        if (auto locals = sub.extract_symbols(is_referenced_local);
+            !locals.empty()
+        ) {
+            for (auto &local : locals) {
+                local.address = memsize;
+                memsize += memory_size(local);
+                sub.update_symbol(std::move(local));
+            }
+        }
+    }
+    prog.set_memory_requirement(memsize);
+    return memsize;
 }
 
-std::map<symbol_name, std::size_t> common_block_sizes(program const &prog) {
+std::map<symbol_name, unsigned> common_block_sizes(program const &prog) {
     // Within a subprogram, a set of variables in the same common block
     // determines the required size of that block.  If two or more subprograms
     // require different sizes for the same block, the first one loaded
     // should determine the size.  If a later subprogram needs a larger size,
     // it's officially an error, but we'll just use the largest.
-    auto comdats = std::map<symbol_name, std::size_t>{};
+    auto comdats = std::map<symbol_name, unsigned>{};
 
-    auto update = [&comdats](symbol_name const &block, std::size_t size) {
-        auto const prior_size = comdats.contains(block) ? comdats[block] : 0uz;
+    auto update = [&comdats](symbol_name const &block, unsigned size) {
+        auto const prior_size = comdats.contains(block) ? comdats[block] : 0;
         comdats[block] = std::max(size, prior_size);
     };
 
     for (auto const &sub : prog) {
         auto const commons = sub.extract_symbols(is_common, by_block_index);
         auto block = symbol_name{};
-        auto size = 0uz;
+        auto size = 0u;
         for (auto const &var : commons) {
             if (var.comdat != block) {
                 update(block, size);
                 block = var.comdat;
-                size = 0uz;
+                size = 0u;
             }
             size += memory_size(var);
         }
-        if (size > 0uz) update(block, size);
+        if (size > 0u) update(block, size);
     }
     return comdats;
 }

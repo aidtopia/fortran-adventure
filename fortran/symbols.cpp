@@ -6,7 +6,7 @@
 
 namespace aid::fortran {
 
-std::size_t memory_size(datatype type) {
+unsigned memory_size(datatype type) {
     switch (type) {
         case datatype::INTEGER:
         case datatype::LITERAL:
@@ -28,15 +28,16 @@ std::size_t memory_size(datatype type) {
     }
 }
 
-std::size_t array_size(array_shape const &shape) {
-    auto size = std::size_t{1};
+unsigned array_size(array_shape const &shape) {
+    auto size = 1u;
     for (auto const &dim : shape) {
-        size *= dim.maximum - dim.minimum + 1;
+        auto const dim_size = dim.maximum - dim.minimum + 1;
+        size *= static_cast<unsigned>(dim_size);
     }
     return size;
 }
 
-std::size_t memory_size(symbol_info const &symbol) {
+unsigned memory_size(symbol_info const &symbol) {
     switch (symbol.kind) {
         case symbolkind::local:
         case symbolkind::common:
