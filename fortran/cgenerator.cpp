@@ -66,6 +66,7 @@ R"(word_t fnMAX0(word_t *a, word_t *b) { return (*a >= *b) ? *a : *b; }
         builtin_t{symbol_name{"MOD"},
 R"(word_t fnMOD(word_t *a, word_t *b) { return *a % *b; }
 )"},
+
         builtin_t{symbol_name{"DATE"},
 R"(
 // Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
@@ -84,6 +85,7 @@ void subDATE(word_t r[2]) {
                    ' ');
 }
 )"},
+
         builtin_t{symbol_name{"TIME"},
 R"(
 // Returns the time as text, in the form 'hh:mm'.  Both fields are two digits,
@@ -98,6 +100,7 @@ void subTIME(word_t *r) {
                    (char)('0' + now.tm_min % 10));
 }
 )"},
+
         builtin_t{symbol_name{"IFILE"},
 R"(
 // The oldest versions of Adventure used IFILE rather than an OPEN statement.
@@ -113,6 +116,7 @@ void subIFILE(word_t *unit, word_t *file) {
     io_open(*unit, buffer);
 }
 )"},
+
         builtin_t{symbol_name{"RAN"},
 R"(
 // Returns a random REAL value between 0.0 and 1.0 (inclusive).
@@ -126,7 +130,6 @@ word_t fnRAN(word_t *state) {
 }
 )"}
     };
-
 }
 
 std::string c_generator::generate_c(program const &prog) {
@@ -138,6 +141,7 @@ std::string c_generator::generate_program(program const &prog) {
     m_initializers.clear();
     // Argument evaluation order in C is not specified, so we generate each
     // portion first and then use std::format to concatenate it all together.
+    auto const core_memory   = generate_core_memory(prog);
     auto const builtins      = generate_builtins(prog);
     auto const prototypes    = generate_prototypes(prog);
     auto const common_blocks = generate_common_blocks(prog);
@@ -146,16 +150,22 @@ std::string c_generator::generate_program(program const &prog) {
     auto const main_function = generate_main_function(prog);
 
     return std::format(
-        "{}\n"
-        "#define CORESIZE {}\n\n{}\n"
-        "{}\n{}\n{}\n{}\n"
-        "{}\n{}\n{}\n{}\n"
-        "{}\n{}\n",
-        external_dependencies(),
-        prog.core_requirement(), machine_definitions(),
+        "{}{}{}"
+        "{}{}{}{}"
+        "{}{}{}{}"
+        "{}{}",
+        external_dependencies(), machine_definitions(), core_memory,
         host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
         prototypes, common_blocks, subprograms, init_function,
         usage_function(), main_function);
+}
+
+std::string c_generator::generate_core_memory(program const &prog) {
+    return std::format(R"(
+// Core memory for variables
+#define CORESIZE {}
+static word_t core[CORESIZE];
+)", prog.core_requirement());
 }
 
 std::string c_generator::generate_builtins(program const &prog) {
@@ -177,13 +187,11 @@ std::string c_generator::generate_builtins(program const &prog) {
     }
 
     // Provide built-in ones. This is in a separate pass so that user-defined
-    // subprograms will supercede builtins.
-    bool any_builtins = false;
+    // subprograms will supersede builtins.
     for (auto const &builtin : available_builtins) {
         if (undefined_subs.contains(builtin.name)) {
-            if (!any_builtins) {
-                result += "// Emulated PDP-10 system library subroutines.\n";
-                any_builtins = true;
+            if (result.empty()) {
+                result = "\n// Emulated PDP-10 system library subroutines.\n";
             }
             result += builtin.code;
             undefined_subs.erase(builtin.name);
@@ -203,14 +211,14 @@ std::string c_generator::generate_prototypes(program const &prog) {
         prototypes += std::format("{};\n", generate_function_signature(sub));
     }
     if (prototypes.empty()) return {};
-    return "// Function prototypes for the program's subprograms\n"s +
+    return "\n// Function prototypes for the program's subprograms\n"s +
            prototypes;
 }
 
 std::string c_generator::generate_common_blocks(program const &prog) {
     auto const comdats = common_block_sizes(prog);
     if (comdats.empty()) return {};
-    auto result = "// Common Blocks:\n"s;
+    auto result = "\n// Common Blocks:\n"s;
     for (auto const &[block, size] : comdats) {
         if (size == 0) continue;
         result += std::format("// {:<6} [{:6}]\n", block, size);
@@ -225,7 +233,7 @@ void atexit_handler(void) {{ host_savecore(); }}
 int main(int argc, const char *argv[]) {{
     io_init();
     kron_init();
-    const char *core_file_name = NULL;
+    const char *core_name = NULL;
     for (int i = 1; i < argc; ++i) {{
         const char *arg = argv[i];
         if (arg == NULL) break;
@@ -239,7 +247,7 @@ int main(int argc, const char *argv[]) {{
                 case 'F': case 'f': io_addmapping(arg+2); continue;
                 case 'T': case 't': kron_override_time(arg+2); continue;
                 case 'D': case 'd': kron_override_date(arg+2); continue;
-                case 'L': case 'l': core_file_name = arg+2; continue;
+                case 'L': case 'l': core_name = arg+2; continue;
                 case 'H': case 'h':
                 case '?':           usage(); return 0;
                 default:
@@ -250,12 +258,7 @@ int main(int argc, const char *argv[]) {{
             fprintf(stderr, "ignoring argument: %s\n", arg);
         }}
     }}
-    if (core_file_name != NULL && *core_file_name != '\0') {{
-        if (!host_loadcore(core_file_name)) {{
-            memset(core, 0, CORESIZE*sizeof(word_t));
-            initialize_static_data();
-        }}
-    }} else {{
+    if (core_name == NULL || *core_name != '\0' || !host_loadcore(core_name)) {{
         initialize_static_data();
     }}
     atexit(atexit_handler);
@@ -343,7 +346,7 @@ std::string c_generator::generate_static_initialization() {
         }
         result += '\n';
     }
-    return std::format("void initialize_static_data() {{\n{}}}\n", result);
+    return std::format("\nvoid initialize_static_data() {{\n{}}}\n", result);
 }
 
 std::string c_generator::generate_unit(unit const &u) {
@@ -355,7 +358,7 @@ std::string c_generator::generate_unit(unit const &u) {
     auto const formats   = generate_format_specifications(u);
     auto const code      = generate_statements(u);
     return
-        std::format("{} {{\n{}{}{}{}{}{}}}\n\n",
+        std::format("\n{} {{\n{}{}{}{}{}{}}}\n",
             signature, retval, dummies, commons, locals, formats, code);
 }
 
@@ -423,7 +426,7 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
     for (auto const &common : commons) {
         if (common.comdat != block) {
             block = common.comdat;
-            result += std::format("// Common block {}\n", block);
+            result += std::format(" // Common block {}\n", block);
         }
         if (common.referenced) {
             result += generate_variable_definition(common);
@@ -480,7 +483,7 @@ std::string c_generator::generate_array_definition(symbol_info const &var) {
             for (auto it = data.begin() + 1; it != data.end(); ++it) {
                 result += std::format(", {}", *it);
             }
-            result += '}';
+            result += "}";
         } else {
             result +=
                 std::format(" = {{{}, {}, ..., {}}}",
@@ -533,7 +536,8 @@ constexpr std::string_view c_generator::external_dependencies() {
 }
 
 constexpr std::string_view c_generator::machine_definitions() {
-    return R"(// Definitions for emulating the PDP-10 and its Fortran system.
+    return R"(
+// Definitions for emulating the PDP-10 and its Fortran system.
 typedef int64_t word_t;
 
 // The PDP-10 LOGICAL uses the sign bit for truth.
@@ -612,7 +616,8 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
 }
 
 constexpr std::string_view c_generator::io_subsystem() {
-    return R"(// The input-output subsystem
+    return R"(
+// The input-output subsystem
 #define IO_MAX_MAPPINGS 4
 #define IO_MAX_UNITS 4
 struct iocontext {
@@ -940,7 +945,8 @@ void io_output(word_t unit, word_t *pvar) {
 }
 
 constexpr std::string_view c_generator::kron_subsystem() {
-    return R"(// The date and time subsystem
+    return R"(
+// The date and time subsystem
 struct kroncontext {
     bool y2k_hack;
     bool override_time;
@@ -1058,8 +1064,8 @@ void kron_override_date(const char *p) {
 }
 
 constexpr std::string_view c_generator::host_subsystem() {
-    return R"(// Host subsystem (core, pause, etc.)
-static word_t core[CORESIZE] = {0};
+    return R"(
+// Host subsystem (core dumps, pause, etc.)
 
 char host_endianness() {
     #if CHAR_BIT == 8
@@ -1193,6 +1199,7 @@ bool host_loadcore(const char *file_name) {
     fclose(core_file);
     if (!success) {
         fprintf(stderr, "unable to load core-image '%s'\n", fname);
+        memset(core, 0, CORESIZE*sizeof(word_t)); // wipe out partial read
     }
     return success;
 }

@@ -20,6 +20,7 @@ class c_generator {
 
     private:
         std::string generate_program(program const &prog);
+        std::string generate_core_memory(program const &prog);
         std::string generate_builtins(program const &prog);
         std::string generate_prototypes(program const &prog);
         std::string generate_common_blocks(program const &prog);
