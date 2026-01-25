@@ -144,7 +144,6 @@ std::string c_generator::generate_program(program const &prog) {
     auto const core_memory   = generate_core_memory(prog);
     auto const builtins      = generate_builtins(prog);
     auto const prototypes    = generate_prototypes(prog);
-    auto const common_blocks = generate_common_blocks(prog);
     auto const subprograms   = generate_subprograms(prog);
     auto const init_function = generate_static_initialization();
     auto const main_function = generate_main_function(prog);
@@ -152,11 +151,11 @@ std::string c_generator::generate_program(program const &prog) {
     return std::format(
         "{}{}{}"
         "{}{}{}{}"
-        "{}{}{}{}"
+        "{}{}{}"
         "{}{}",
         external_dependencies(), machine_definitions(), core_memory,
         host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
-        prototypes, common_blocks, subprograms, init_function,
+        prototypes, subprograms, init_function,
         usage_function(), main_function);
 }
 
@@ -213,17 +212,6 @@ std::string c_generator::generate_prototypes(program const &prog) {
     if (prototypes.empty()) return {};
     return "\n// Function prototypes for the program's subprograms\n"s +
            prototypes;
-}
-
-std::string c_generator::generate_common_blocks(program const &prog) {
-    auto const comdats = common_block_sizes(prog);
-    if (comdats.empty()) return {};
-    auto result = "\n// Common Blocks:\n"s;
-    for (auto const &[block, size] : comdats) {
-        if (size == 0) continue;
-        result += std::format("// {:<6} [{:6}]\n", block, size);
-    }
-    return result;
 }
 
 std::string c_generator::generate_main_function(program const &prog) {

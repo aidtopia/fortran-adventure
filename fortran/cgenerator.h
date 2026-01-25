@@ -23,7 +23,6 @@ class c_generator {
         std::string generate_core_memory(program const &prog);
         std::string generate_builtins(program const &prog);
         std::string generate_prototypes(program const &prog);
-        std::string generate_common_blocks(program const &prog);
         std::string generate_main_function(program const &prog);
         std::string generate_subprograms(program const &prog);
         std::string generate_static_initialization();
