@@ -24,22 +24,19 @@ namespace {
         // sym.name is the identifier used in the Fortran code, which sometimes
         // clashes with C or C++ identifiers (especially `NULL`), so we'll
         // prefix it.
-        if (sym.kind == symbolkind::subprogram) {
-            if (sym.type == datatype::none) {
+        switch (sym.kind) {
+            case symbolkind::subprogram:
+                if (sym.type == datatype::none) {
+                    return std::format("sub{}", sym.name);
+                }
+                [[fallthrough]];
+            case symbolkind::internal:
+                return std::format("fn{}", sym.name);
+            case symbolkind::external:
                 return std::format("sub{}", sym.name);
-            }
-            return std::format("fn{}", sym.name);
+            default:
+                return std::format("v{}", sym.name);
         }
-        if (sym.kind == symbolkind::external) {
-            return std::format("sub{}", sym.name);
-        }
-        return std::format("v{}", sym.name);
-    }
-    static std::string base(symbol_name const &block) {
-        return block.empty() ? "memory"s : std::format("common{}", block);
-    }
-    static std::string base(symbol_info const &sym) {
-        return base(sym.comdat);
     }
     static std::string macro_defined(std::string_view c_stmt) {
         auto constexpr directive = "#define "sv;
@@ -138,8 +135,7 @@ std::string c_generator::generate_c(program const &prog) {
 }
 
 std::string c_generator::generate_program(program const &prog) {
-    m_memsize = 0;
-    m_init_data.clear();
+    m_initializers.clear();
     // Argument evaluation order in C is not specified, so we generate each
     // portion first and then use std::format to concatenate it all together.
     auto const builtins      = generate_builtins(prog);
@@ -148,8 +144,6 @@ std::string c_generator::generate_program(program const &prog) {
     auto const subprograms   = generate_subprograms(prog);
     auto const init_function = generate_static_initialization();
     auto const main_function = generate_main_function(prog);
-
-    assert(m_memsize == prog.memory_requirement());
 
     return std::format(
         "{}\n"
@@ -216,13 +210,9 @@ std::string c_generator::generate_prototypes(program const &prog) {
 std::string c_generator::generate_common_blocks(program const &prog) {
     auto const comdats = common_block_sizes(prog);
     if (comdats.empty()) return {};
-    auto result = "// Common Blocks\n"s;
+    auto result = "// Common Blocks:\n"s;
     for (auto const &[block, size] : comdats) {
-        if (size == 0uz) continue;
-        result +=
-            std::format("word_t * const common{} = &memory[{}]; // [{}];\n",
-                        block, m_memsize, size);
-        m_memsize += size;
+        result += std::format("// {:<6} [{:6}]\n", block, size);
     }
     return result;
 }
@@ -284,40 +274,68 @@ std::string c_generator::generate_subprograms(program const &prog) {
 }
 
 std::string c_generator::generate_static_initialization() {
+    // Given that address assignment and code generation likely happen in the
+    // same order, these are probably already in order.  But just in case...
+    std::sort(m_initializers.begin(), m_initializers.end(), by_address);
+
     auto const is_run = [] (auto data) -> bool {
         if (data.size() <= 3) return false;
-        for (auto value : data) {
-            if (value != data.front()) return false;
-        }
+        for (auto value : data) { if (value != data.front()) return false; }
         return true;
     };
 
-    auto runs = std::string{};
-    auto singletons = std::string{};
-    for (auto [block, offset, data] : m_init_data) {
-        if (is_run(data)) {
-            if (data.front() != 0) {
-                runs +=
-                    std::format(
-                        " for (int i = 0; i < {}; ++i) {}[{}+i] = {};\n",
-                        data.size(), base(block), offset, data.front());
+    auto result = std::string{};
+    for (auto &var : m_initializers) {
+        auto const name = var.kind == symbolkind::common
+            ? std::format("{}:{}", var.comdat, var.name)
+            : std::format("{}", var.name);
+        if (is_run(var.init_data)) {
+            auto const value = var.init_data.front();
+            if (value == 0) continue;
+            result +=
+                std::format(
+                    " /*{}*/ for (int i = 0; i < {}; ++i) memory[{}+i] = {};",
+                    name, var.init_data.size(), var.address, value);
+            if (looks_literal(value)) {
+                result += std::format(" /*'{}'*/", unpack_literal(value));
             }
-        } else {
-            for (auto value : data) {
-                if (value != 0) {
-                    singletons +=
-                        std::format(
-                            " {}[{}] = {};\n",
-                            base(block), offset, value);
-                }
-                ++offset;
-            }
+            result += '\n';
+            continue;
         }
+        if (var.init_data.size() > 1) {
+            auto const &data = var.init_data;
+            auto const size = memory_size(var);
+            auto const elements = array_size(var.shape);
+            auto const per_element = memory_size(var.type);
+            auto offset = 0u;
+            for (auto i = 0u; i < elements && offset < size; ++i) {
+                result += std::format(" /*{}[{}]*/", name, i);
+                for (auto j = 0u; j < per_element && offset < size; ++j) {
+                    auto const value = data[offset];
+                    if (value == 0) continue;
+                    result += std::format(" memory[{}] = {};",
+                                          var.address+offset, value);
+                    if (looks_literal(value)) {
+                        result +=
+                            std::format(" /*'{}'*/", unpack_literal(value));
+                    }
+                    offset += 1;
+                }
+                result += '\n';
+            }
+            continue;
+        }
+        assert(var.init_data.size() == 1);
+        auto const value = var.init_data.front();
+        if (value == 0) continue;
+        result += std::format(" /*{}*/ memory[{}] = {};",
+                              name, var.address, var.init_data.front());
+        if (looks_literal(value)) {
+            result += std::format(" /*'{}'*/", unpack_literal(value));
+        }
+        result += '\n';
     }
-
-    return
-        std::format("void initialize_static_data() {{\n{}{}}}\n",
-                    runs, singletons);
+    return std::format("void initialize_static_data() {{\n{}}}\n", result);
 }
 
 std::string c_generator::generate_unit(unit const &u) {
@@ -375,11 +393,8 @@ std::string c_generator::generate_return_value(unit const &u) {
     if (retvals.empty()) return {};
     assert(retvals.size() == 1);
     auto const &retval = retvals.front();
-    auto const addr = m_memsize;
-    assert(addr == retval.address);
-    m_memsize += memory_size(retval);
     return std::format(" word_t *{} = &memory[{}];  // return value\n",
-                       name(retval), addr);
+                       name(retval), retval.address);
 }
 
 std::string c_generator::generate_dummies(unit const &u) {
@@ -395,20 +410,17 @@ std::string c_generator::generate_dummies(unit const &u) {
 std::string c_generator::generate_common_variable_declarations(unit const &u) {
     auto const commons = u.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return {};
-    auto result = " // Common variables\n"s;
+    auto result = std::string{};
     auto block = symbol_name{};
-    auto offset = machine_word_t{0};
     for (auto const &common : commons) {
-        if (common.comdat != block) offset = 0;
-        block = common.comdat;
-        if (common.referenced) {
-            result += generate_variable_definition(common, offset);
-            add_initializer(block, offset, common.init_data);
+        if (common.comdat != block) {
+            block = common.comdat;
+            result += std::format("// Common block {}\n", block);
         }
-        // Its size still matters to the layout, even if it wasn't referenced.
-        offset += memory_size(common);
-        // Note that we do NOT bump m_memsize because the space for the common
-        // variables is already accounted for by the comdat blocks.
+        if (common.referenced) {
+            result += generate_variable_definition(common);
+            add_initializer(common);
+        }
     }
     return result;
 }
@@ -418,10 +430,8 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     if (locals.empty()) return {};
     auto result = " // Local variables\n"s;
     for (auto const &local : locals) {
-        assert(local.address == m_memsize);
-        result += generate_variable_definition(local, m_memsize);
-        add_initializer(local.comdat, m_memsize, local.init_data);
-        m_memsize += memory_size(local);
+        result += generate_variable_definition(local);
+        add_initializer(local);
     }
     return result;
 }
@@ -442,48 +452,41 @@ std::string c_generator::generate_format_specifications(unit const &u) {
 }
 
 std::string c_generator::generate_variable_definition(
-    symbol_info const &variable,
-    machine_word_t offset
+    symbol_info const &variable
 ) {
     if (is_array(variable)) {
-        return generate_array_definition(variable, offset);
+        return generate_array_definition(variable);
     } else {
-        return generate_scalar_definition(variable, offset);
+        return generate_scalar_definition(variable);
     }
 }
 
-std::string c_generator::generate_array_definition(
-    symbol_info const &var,
-    machine_word_t offset
-) {
+std::string c_generator::generate_array_definition(symbol_info const &var) {
     auto result =
-        std::format(" word_t * const {} = &{}[{}]; // [{}]",
-                    name(var), base(var), offset, memory_size(var));
+        std::format(" word_t * const {} = &memory[{}]; // [{}]",
+                    name(var), var.address, memory_size(var));
     if (!var.init_data.empty()) {
-        if (var.init_data.size() <= 3) {
-            result += std::format(" = {{{}", var.init_data[0]);
-            for (auto i = 1uz; i < var.init_data.size(); ++i) {
-                result += std::format(",{}", var.init_data[i]);
+        auto const &data = var.init_data;
+        if (data.size() <= 3) {
+            result += std::format(" = {{{}", data.front());
+            for (auto it = data.begin() + 1; it != data.end(); ++it) {
+                result += std::format(", {}", *it);
             }
             result += '}';
         } else {
             result +=
                 std::format(" = {{{}, {}, ..., {}}}",
-                            var.init_data[0], var.init_data[1],
-                            var.init_data.back());
+                    var.init_data[0], var.init_data[1], var.init_data.back());
         }
     }
     result += '\n';
     return result;
 }
 
-std::string c_generator::generate_scalar_definition(
-    symbol_info const &var,
-    machine_word_t offset
-) {
+std::string c_generator::generate_scalar_definition(symbol_info const &var) {
     auto result =
-        std::format(" word_t * const {} = &{}[{}];",
-                    name(var), base(var), offset);
+        std::format(" word_t * const {} = &memory[{}];",
+                    name(var), var.address);
     if (!var.init_data.empty()) {
         result += std::format(" // = {}", var.init_data[0]);
     }
@@ -491,14 +494,9 @@ std::string c_generator::generate_scalar_definition(
     return result;
 }
 
-void c_generator::add_initializer(
-    symbol_name block,
-    machine_word_t offset,
-    init_data_t data
-) {
-    if (!data.empty()) {
-        m_init_data.emplace_back(block, offset, std::move(data));
-    }
+void c_generator::add_initializer(symbol_info const &var) {
+    if (var.init_data.empty()) return;
+    m_initializers.push_back(var);
 }
 
 constexpr std::string_view c_generator::external_dependencies() {
@@ -1141,8 +1139,8 @@ bool host_dumpcore(const char *file_name) {
     const bool success =
         fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
         fwrite(memory, sizeof(word_t), hdr.count, core_file) == hdr.count;
-    if (!success) fputs("failed to save core dump", stderr);
     fclose(core_file);
+    if (!success) fputs("failed to save core dump", stderr);
     return success;
 }
 

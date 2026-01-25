@@ -125,6 +125,9 @@ inline bool has_unknown_type(symbol_info const &a) {
     return a.type == datatype::unknown;
 }
 
+inline bool by_address(symbol_info const &a, symbol_info const &b) {
+    return a.address < b.address;
+}
 inline bool by_block_index(symbol_info const &a, symbol_info const &b) {
     if (a.comdat < b.comdat) return true;
     if (a.comdat > b.comdat) return false;

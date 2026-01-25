@@ -16,7 +16,7 @@ class c_generator {
     public:
         static std::string generate_c(program const &prog);
 
-        c_generator() : m_memsize{0}, m_init_data{} {}
+        c_generator() : m_initializers{} {}
 
     private:
         std::string generate_program(program const &prog);
@@ -36,24 +36,11 @@ class c_generator {
         std::string generate_local_variable_declarations(unit const &u);
         std::string generate_format_specifications(unit const &u);
 
-        std::string generate_variable_definition(
-            symbol_info const &var,
-            machine_word_t offset
-        );
-        std::string generate_array_definition(
-            symbol_info const &var,
-            machine_word_t offset
-        );
-        std::string generate_scalar_definition(
-            symbol_info const &var,
-            machine_word_t offset
-        );
+        std::string generate_variable_definition(symbol_info const &var);
+        std::string generate_array_definition(symbol_info const &var);
+        std::string generate_scalar_definition(symbol_info const &var);
 
-        void add_initializer(
-            symbol_name block,
-            machine_word_t offset,
-            init_data_t data
-        );
+        void add_initializer(symbol_info const &symbol);
 
         // The runtime support consists of static text.
         static constexpr std::string_view external_dependencies();
@@ -63,20 +50,10 @@ class c_generator {
         static constexpr std::string_view host_subsystem();
         static constexpr std::string_view usage_function();
 
-        // As the C code is generated, m_memsize keeps track of the next
-        // available address in the program memory.
-        machine_word_t m_memsize = 0;
-
-        // When static initialization cannot be done where a variable is
-        // defined, the initialization data is stored in m_init_data.  It's
-        // then used by generate_static_initialization to create a function
+        // Static initialization cannot be done where the variables are defined,
+        // so save them until generate_static_initialization creates a function
         // called at startup.
-        struct initializer {
-            symbol_name block;  // COMDAT name or empty for regular memory
-            machine_word_t offset;  // relative to start of block
-            init_data_t values;
-        };
-        std::vector<initializer> m_init_data;
+        std::vector<symbol_info> m_initializers;
 };
 
 }
