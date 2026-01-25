@@ -1,0 +1,26 @@
+# Attempts to make the generated C code slightly less hideous.
+
+BasedOnStyle: LLVM
+
+# Try very hard not to wrap lines
+ColumnLimit: 0
+
+# Prevent aggressive bin-packing
+BinPackArguments: false
+BinPackParameters: false
+
+# Avoid reflowing long expressions
+BreakBeforeBinaryOperators: None
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# Don’t touch short lines
+AllowShortBlocksOnASingleLine: Always
+AllowShortIfStatementsOnASingleLine: Always
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+
+# Make indentation sane
+IndentWidth: 4
+ContinuationIndentWidth: 4
+UseTab: Never
