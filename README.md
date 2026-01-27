@@ -14,7 +14,7 @@ Here's the status of those efforts (using [The Adventure Family Tree](https://mi
 |:--------|:-----------|:---------|:---------|:------------|
 |[**WOOD0350 Ver. 2**](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES | YES<sup>_b_</sup>| YES | YES<sup>_f_</sup> |
 |[WOOD0350 Ver. 1](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES<sup>_c_</sup> | YES<sup>_b_</sup> | YES<sup>_e_</sup> | YES<sup>_f_</sup> |
-|[CROW0000 (F4, 1977-03-31)](https://mipmip.org/advfamily/advfamily.html#CROW0000)| YES<sup>_g_</sup> | YES<sup>h</sup> | YES<sup>_e, i_</sup> | no<sup>_j_</sup> |
+|[CROW0000 (F4, 1977-03-31)](https://mipmip.org/advfamily/advfamily.html#CROW0000)| YES<sup>_g_</sup> | YES<sup>_h_</sup> | YES<sup>_e, i_</sup> | no<sup>_j_</sup> |
 |[BLKT0350](https://mipmip.org/advfamily/advfamily.html#BLKT0350)<sup>_k_</sup> | no | no | no | no |
 |[SUPN0350](https://mipmip.org/advfamily/advfamily.html#SUPN0350)<sup>_k_</sup> | no | no | no | no |
 
