@@ -1339,20 +1339,8 @@ parser::expected<argument_list_t> parser::parse_argument_list() {
 }
 
 parser::expected<expression_t> parser::parse_argument() {
-    auto const bookmark = position();
-    auto const name = parse_identifier();
-    if (!name.empty() && (match(',') || match(')'))) {
-        // It's just a variable name, so make sure it's added to the symbol
-        // table. (If it's not already in the symbol table, then it's probably
-        // an output argument that should be implicitly declared as a local
-        // variable, just like we'd do for the left side of an assignment.)
-        auto symbol = m_subprogram.find_symbol(name);
-        assert(symbol.kind == symbolkind::local ||
-               symbol.type != datatype::unknown);
-        infer_type_and_update(symbol);
-    }
-    // Back up and parse the argument as an expression.
-    m_it = bookmark;
+    // TODO:  Make a variable address node or a temporary variable node that
+    // wraps the general expression.
     return parse_expression();
 }
 
