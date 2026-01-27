@@ -14,6 +14,7 @@ enum class operator_t {
     posigate,       // unary +
     logic_not,
     bit_not,  // same as ones complement
+    as_logical,  // casts to a LOGICAL so value is exactly .TRUE. or .FALSE.
     // binary
     add, subtract, multiply, divide,
     // remainder,      // not in Fortran

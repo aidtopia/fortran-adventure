@@ -645,7 +645,16 @@ parser::expected<statement_t> parser::parse_assignment() {
 
     if (!at_eol()) return error("unexpected token after assignment");
 
-    return make<assignment_statement>(lvalue, std::move(rhs).value());
+    // If we're assigning to a LOGICAL, we'll ensure the value is actually
+    // .TRUE. or .FALSE. rather than an INTEGER with an implicit truthiness,
+    // in case the program compares it to .TRUE. or .FALSE. explicitly.
+    auto rvalue =
+        symbol.type == datatype::LOGICAL
+            ? std::make_shared<unary_node>(operator_t::as_logical,
+                                           std::move(rhs).value())
+            : std::move(rhs).value();
+
+    return make<assignment_statement>(lvalue, std::move(rvalue));
 }
 
 parser::expected<statement_t> parser::parse_accept() {

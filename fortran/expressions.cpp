@@ -30,6 +30,7 @@ namespace {
             case operator_t::negate:        return "neg";
             case operator_t::logic_not:     [[fallthrough]];
             case operator_t::bit_not:       return "bitnot";
+            case operator_t::as_logical:    return "logical";
             case operator_t::add:           return "add";
             case operator_t::subtract:      return "sub";
             case operator_t::multiply:      return "mul";
