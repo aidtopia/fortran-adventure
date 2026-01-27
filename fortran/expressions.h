@@ -57,7 +57,7 @@ class variable_node : public expression_node {
         variable_node(symbol_name const &name) : m_name(name) {}
 
     private:
-        std::string do_generate_reference() const override;
+        std::string do_generate_address() const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &) const override;
 
@@ -69,7 +69,7 @@ class external_node : public expression_node {
         external_node(symbol_name const &name) : m_name(name) {}
 
     private:
-        std::string do_generate_reference() const override;
+        std::string do_generate_address() const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &) const override;
 
@@ -87,7 +87,7 @@ class array_index_node : public expression_node {
             m_index_expr(make_index_expression(indices, shape)) {}
 
     private:
-        std::string do_generate_reference() const override;
+        std::string do_generate_address() const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &) const override;
         

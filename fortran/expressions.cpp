@@ -83,12 +83,12 @@ std::string constant_node::do_generate_value() const {
 }
 
 
-std::string variable_node::do_generate_reference() const {
+std::string variable_node::do_generate_address() const {
     return std::format("v{}", m_name);
 }
 
 std::string variable_node::do_generate_value() const {
-    return std::format("*{}", do_generate_reference());
+    return std::format("*{}", do_generate_address());
 }
 
 void variable_node::do_mark_referenced(unit &u) const {
@@ -96,7 +96,7 @@ void variable_node::do_mark_referenced(unit &u) const {
 }
 
 
-std::string external_node::do_generate_reference() const {
+std::string external_node::do_generate_address() const {
     return std::format("(word_t *){}", do_generate_value());
 }
 
@@ -110,12 +110,12 @@ void external_node::do_mark_referenced(unit &u) const {
 }
 
 
-std::string array_index_node::do_generate_reference() const {
+std::string array_index_node::do_generate_address() const {
     return std::format("(v{} + {})", m_array, m_index_expr->generate_value());
 }
 
 std::string array_index_node::do_generate_value() const {
-    return std::format("*{}", do_generate_reference());
+    return std::format("*{}", do_generate_address());
 }
 
 void array_index_node::do_mark_referenced(unit &u) const {
@@ -180,7 +180,7 @@ std::string function_invocation_node::formatted_args(
     auto formatted = std::string{};
     for (const auto &arg : arguments) {
         if (!formatted.empty()) formatted.append(", ");
-        formatted.append(arg->generate_reference());
+        formatted.append(arg->generate_address());
     }
     return formatted;
 }

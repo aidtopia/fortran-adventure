@@ -29,12 +29,12 @@ class unit;  // forward reference
 class expression_node {
     public:
         virtual ~expression_node() = default;
-        std::string generate_reference() const { return do_generate_reference(); }
+        std::string generate_address() const { return do_generate_address(); }
         std::string generate_value() const { return do_generate_value(); }
         void mark_referenced(unit &u) const { return do_mark_referenced(u); }
 
     private:
-        virtual std::string do_generate_reference() const {
+        virtual std::string do_generate_address() const {
             // This default implementation is appropriate for many but not all
             // expression node types.
             return std::format("tmp({})", do_generate_value());

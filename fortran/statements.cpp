@@ -13,7 +13,7 @@ namespace {
         auto text = std::string{};
         for (auto const &arg : args) {
             if (!text.empty()) text.append(", ");
-            text.append(arg->generate_reference());
+            text.append(arg->generate_address());
         }
         return text;
     }
@@ -73,7 +73,7 @@ std::string arithmetic_function_definition_statement::format_parameters(
 std::string assignment_statement::do_generate(unit const &) const {
     return std::format(
         "*{} = {};",
-        m_lvalue->generate_reference(), m_rhs->generate_value());
+        m_lvalue->generate_address(), m_rhs->generate_value());
 }
 
 void assignment_statement::do_mark_reachable(unit &u) const {
@@ -234,12 +234,12 @@ std::string read_statement::do_generate(unit const &u) const {
             auto variable_ref = std::string{};
             if (item.indices.empty()) {
                 auto const variable_expr = variable_node{item.variable};
-                variable_ref = variable_expr.generate_reference();
+                variable_ref = variable_expr.generate_address();
             } else {
                 auto const symbol = u.find_symbol(item.variable);
                 auto const array_expr =
                     array_index_node{item.variable, symbol.shape, item.indices};
-                variable_ref = array_expr.generate_reference();
+                variable_ref = array_expr.generate_address();
             }
             input_item = std::format("  io_input({});\n", variable_ref);
         } else {
@@ -258,7 +258,7 @@ std::string read_statement::do_generate(unit const &u) const {
                 item.index_control.init->generate_value(),
                 item.index_control.limit->generate_value(),
                 item.index_control.step->generate_value(),
-                array_expr.generate_reference());
+                array_expr.generate_address());
         }
         inputs.append(input_item);
     }
@@ -298,12 +298,12 @@ std::string type_statement::do_generate(unit const &u) const {
             auto variable_ref = std::string{};
             if (item.indices.empty()) {
                 auto const variable_expr = variable_node{item.variable};
-                variable_ref = variable_expr.generate_reference();
+                variable_ref = variable_expr.generate_address();
             } else {
                 auto const symbol = u.find_symbol(item.variable);
                 auto const array_expr =
                     array_index_node{item.variable, symbol.shape, item.indices};
-                variable_ref = array_expr.generate_reference();
+                variable_ref = array_expr.generate_address();
             }
             output_item = std::format("  io_output(0, {});\n", variable_ref);
         } else {
@@ -322,7 +322,7 @@ std::string type_statement::do_generate(unit const &u) const {
                 item.index_control.init->generate_value(),
                 item.index_control.limit->generate_value(),
                 item.index_control.step->generate_value(),
-                array_expr.generate_reference());
+                array_expr.generate_address());
         }
         outputs.append(output_item);
     }
