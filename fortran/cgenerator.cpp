@@ -804,9 +804,7 @@ const char *io_readlogical(int width, const char *psrc, word_t *pvar) {
 }
 
 char *io_writelogical(int width, word_t const *pvar, char *pdst) {
-    if (width > 1) {
-        while (width-- > 1) { *pdst++ = ' '; }
-    }
+    while (width-- > 1) { *pdst++ = ' '; }
     *pdst++ = *pvar < 0 ? 'T' : 'F';
     return pdst;
 }
