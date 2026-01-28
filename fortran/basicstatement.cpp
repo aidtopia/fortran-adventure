@@ -17,10 +17,11 @@ std::string basic_statement::generate(unit const &u) const {
 void basic_statement::mark_reachable(unit &u) {
     if (m_reachable) return;
     m_reachable = true;
-    do_mark_reachable(u);
+    auto temp_counter = 0u;
+    do_mark_reachable(u, temp_counter);
 }
 
 std::string basic_statement::do_generate(unit const &) const { return ""; }
-void basic_statement::do_mark_reachable(unit &) const {}
+void basic_statement::do_mark_reachable(unit &, unsigned &) {}
 
 }

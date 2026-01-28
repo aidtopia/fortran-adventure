@@ -23,7 +23,7 @@ class arithmetic_function_definition_statement : public basic_statement {
             m_definition(definition) {}
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         static std::string format_parameters(parameter_list_t const &params);
 
@@ -39,7 +39,7 @@ class assignment_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         expression_t m_lvalue;
         expression_t m_rhs;
@@ -52,7 +52,7 @@ class call_statement : public basic_statement {
 
     protected:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         symbol_name m_name;
         argument_list_t m_args;
@@ -89,7 +89,7 @@ class do_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         index_control_t m_index_control;
         statement_block m_body;
@@ -103,7 +103,7 @@ class goto_statement : public basic_statement {
         bool may_proceed() const override { return false; }
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         statement_number_t m_target;
 };
@@ -117,7 +117,7 @@ class computed_goto_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         std::string cases() const;
 
@@ -132,7 +132,7 @@ class if_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         expression_t m_condition;
         statement_t m_then;
@@ -153,7 +153,7 @@ class numeric_if_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         expression_t m_condition;
         statement_number_t m_negative;
@@ -168,7 +168,7 @@ class open_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         expression_t m_iounit;
         std::filesystem::path m_name;
@@ -194,7 +194,7 @@ class read_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         expression_t        m_iounit;
         statement_number_t  m_format;
@@ -210,7 +210,7 @@ class return_statement : public basic_statement {
         bool may_proceed() const override { return false; }
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         symbol_name m_retval;
 };
@@ -231,7 +231,7 @@ class type_statement : public basic_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
-        void do_mark_reachable(unit &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 
         statement_number_t  m_format;
         io_list_t           m_items;

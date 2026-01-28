@@ -22,7 +22,7 @@ class unary_node : public expression_node {
 
     private:
         std::string do_generate_value() const override;
-        void do_mark_referenced(unit &) const override;
+        void do_mark_referenced(unit &, unsigned &);
 
         operator_t m_op;
         expression_t m_node;
@@ -35,7 +35,7 @@ class binary_node : public expression_node {
 
     private:
         std::string do_generate_value() const override;
-        void do_mark_referenced(unit &) const override;
+        void do_mark_referenced(unit &, unsigned &);
 
         expression_t m_lhs;
         operator_t m_op;
@@ -59,9 +59,24 @@ class variable_node : public expression_node {
     private:
         std::string do_generate_address() const override;
         std::string do_generate_value() const override;
-        void do_mark_referenced(unit &) const override;
+        void do_mark_referenced(unit &, unsigned &);
 
         symbol_name m_name;
+};
+
+class temp_variable_node : public expression_node {
+    public:
+        temp_variable_node(expression_t expr) : m_count(0), m_expr(expr) {}
+
+    private:
+        std::string do_generate_address() const override;
+        std::string do_generate_value() const override;
+        void do_mark_referenced(unit &, unsigned &) override;
+
+        symbol_name name() const;
+
+        unsigned m_count;
+        expression_t m_expr;
 };
 
 class external_node : public expression_node {
@@ -71,7 +86,7 @@ class external_node : public expression_node {
     private:
         std::string do_generate_address() const override;
         std::string do_generate_value() const override;
-        void do_mark_referenced(unit &) const override;
+        void do_mark_referenced(unit &, unsigned &);
 
         symbol_name m_name;
 };
@@ -89,7 +104,7 @@ class array_index_node : public expression_node {
     private:
         std::string do_generate_address() const override;
         std::string do_generate_value() const override;
-        void do_mark_referenced(unit &) const override;
+        void do_mark_referenced(unit &, unsigned &);
         
         static expression_t make_index_expression(
             argument_list_t const &indices,
@@ -116,7 +131,7 @@ class function_invocation_node : public expression_node {
 
     private:
         std::string do_generate_value() const override;
-        void do_mark_referenced(unit &) const override;
+        void do_mark_referenced(unit &, unsigned &);
         static std::string formatted_args(argument_list_t const &arguments);
 
         symbol_name m_function;

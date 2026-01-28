@@ -31,7 +31,9 @@ class expression_node {
         virtual ~expression_node() = default;
         std::string generate_address() const { return do_generate_address(); }
         std::string generate_value() const { return do_generate_value(); }
-        void mark_referenced(unit &u) const { return do_mark_referenced(u); }
+        void mark_referenced(unit &u, unsigned &temp_count) {
+            return do_mark_referenced(u, temp_count);
+        }
 
     private:
         virtual std::string do_generate_address() const {
@@ -40,7 +42,7 @@ class expression_node {
             return std::format("tmp({})", do_generate_value());
         }
         virtual std::string do_generate_value() const = 0;
-        virtual void do_mark_referenced(unit &) const {};
+        virtual void do_mark_referenced(unit &, unsigned &) {};
 };
 
 using expression_t = std::shared_ptr<expression_node>;

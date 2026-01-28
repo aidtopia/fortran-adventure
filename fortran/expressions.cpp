@@ -61,8 +61,8 @@ std::string unary_node::do_generate_value() const {
                        operator_function(m_op), m_node->generate_value());
 }
 
-void unary_node::do_mark_referenced(unit &u) const {
-    m_node->mark_referenced(u);
+void unary_node::do_mark_referenced(unit &u, unsigned &t) {
+    m_node->mark_referenced(u, t);
 }
 
 
@@ -72,9 +72,9 @@ std::string binary_node::do_generate_value() const {
                        m_lhs->generate_value(), m_rhs->generate_value());
 }
 
-void binary_node::do_mark_referenced(unit &u) const {
-    m_lhs->mark_referenced(u);
-    m_rhs->mark_referenced(u);
+void binary_node::do_mark_referenced(unit &u, unsigned &t) {
+    m_lhs->mark_referenced(u, t);
+    m_rhs->mark_referenced(u, t);
 }
 
 
@@ -91,8 +91,33 @@ std::string variable_node::do_generate_value() const {
     return std::format("*{}", do_generate_address());
 }
 
-void variable_node::do_mark_referenced(unit &u) const {
+void variable_node::do_mark_referenced(unit &u, unsigned &) {
     u.mark_symbol_referenced(m_name);
+}
+
+
+std::string temp_variable_node::do_generate_address() const {
+    return std::format("((v{0} = {1}, v{0})", name(), m_expr->generate_value());
+}
+
+std::string temp_variable_node::do_generate_value() const {
+    return std::format("{}", m_expr->generate_value());
+}
+
+void temp_variable_node::do_mark_referenced(unit &u, unsigned &counter) {
+    assert(m_count == 0 && "temp already assigned a value?");
+    m_count = ++counter;
+    // Note that we're not just marking the symbol as referenced, we _may_ be
+    // creating it.
+    auto symbol = u.find_symbol(name());
+    symbol.referenced = true;
+    u.update_symbol(symbol);
+    m_expr->mark_referenced(u, counter);
+}
+
+symbol_name temp_variable_node::name() const {
+    assert(m_count > 0 && "forgot to call do_mark_referenced?");
+    return symbol_name{std::format("TMP{:03}", m_count)};
 }
 
 
@@ -105,7 +130,7 @@ std::string external_node::do_generate_value() const {
     return std::format("sub{}", m_name);
 }
 
-void external_node::do_mark_referenced(unit &u) const {
+void external_node::do_mark_referenced(unit &u, unsigned &) {
     u.mark_symbol_referenced(m_name);
 }
 
@@ -118,9 +143,9 @@ std::string array_index_node::do_generate_value() const {
     return std::format("*{}", do_generate_address());
 }
 
-void array_index_node::do_mark_referenced(unit &u) const {
+void array_index_node::do_mark_referenced(unit &u, unsigned &t) {
     u.mark_symbol_referenced(m_array);
-    m_index_expr->mark_referenced(u);
+    m_index_expr->mark_referenced(u, t);
 }
 
 
@@ -166,10 +191,10 @@ std::string function_invocation_node::do_generate_value() const {
                        m_function, formatted_args(m_arguments));
 }
 
-void function_invocation_node::do_mark_referenced(unit &u) const {
+void function_invocation_node::do_mark_referenced(unit &u, unsigned &t) {
     u.mark_symbol_referenced(m_function);
     for (const auto &arg : m_arguments) {
-        arg->mark_referenced(u);
+        arg->mark_referenced(u, t);
     }
 }
 

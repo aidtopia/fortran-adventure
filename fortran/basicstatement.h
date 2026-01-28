@@ -42,7 +42,7 @@ class basic_statement {
 
     private:
         virtual std::string do_generate(unit const &) const;
-        virtual void do_mark_reachable(unit &) const;
+        virtual void do_mark_reachable(unit &, unsigned &);
 
         statement_number_t m_number = no_statement_number;
         bool m_reachable = false;
