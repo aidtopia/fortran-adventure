@@ -49,37 +49,6 @@ namespace {
 
 }  // anonymous namespace
 
-std::string arithmetic_function_definition_statement::do_generate(
-    unit const &u
-) const {
-    auto const symbol = u.find_symbol(m_macro);
-    if (!symbol.referenced) return "";
-    return std::format("#define fn{}({}) {}",
-        m_macro, format_parameters(m_params),
-        m_definition->generate_value());
-}
-
-void arithmetic_function_definition_statement::do_mark_reachable(
-    unit &u,
-    unsigned &t
-) {
-    // The definition statement does not reference the macro name.  It just
-    // defines it.
-    m_definition->mark_referenced(u, t);
-}
-
-std::string arithmetic_function_definition_statement::format_parameters(
-    parameter_list_t const &params
-) {
-    if (params.empty()) return {};
-    auto result = std::format("v{}", params[0]);
-    for (std::size_t i = 1; i < params.size(); ++i) {
-        result.append(std::format(", v{}", params[i]));
-    }
-    return result;
-}
-
-
 std::string assignment_statement::do_generate(unit const &) const {
     return std::format(
         "*{} = {};",
@@ -93,8 +62,7 @@ void assignment_statement::do_mark_reachable(unit &u, unsigned &t) {
 
 
 std::string call_statement::do_generate(unit const &) const {
-    // Do not use EVAL here: a subroutine call is not an expression.
-    return std::format("CALL(sub{}({}));", m_name, format_arguments(m_args));
+    return std::format("sub{}({});", m_name, format_arguments(m_args));
 }
 
 void call_statement::do_mark_reachable(unit &u, unsigned &t) {
@@ -107,7 +75,7 @@ void call_statement::do_mark_reachable(unit &u, unsigned &t) {
 
 std::string indirect_call_statement::do_generate(unit const &) const {
     return
-        std::format("CALL((*(psub{})v{})({}));",
+        std::format("(*(psub{})v{})({});",
                     m_args.size(), m_name, format_arguments(m_args));
 }
 
@@ -262,9 +230,7 @@ std::string read_statement::do_generate(unit const &u) const {
                 "  for (*v{0} = {1}; "
                        "in_range(*v{0}, {1}, {2}); "
                        "*v{0} += {3}) {{\n"
-                "   tmp_push();\n"
                 "   io_input({4});\n"
-                "   tmp_pop(0);\n"
                 "  }}\n",
                 item.index_control.index,
                 item.index_control.init->generate_value(),
@@ -326,9 +292,7 @@ std::string type_statement::do_generate(unit const &u) const {
                 "  for (*v{0} = {1}; "
                        "in_range(*v{0}, {1}, {2}); "
                         "*v{0} += {3}) {{\n"
-                "   tmp_push();\n"
                 "   io_output(0, {4});\n"
-                "   tmp_pop(0);\n"
                 "  }}\n",
                 item.index_control.index,
                 item.index_control.init->generate_value(),

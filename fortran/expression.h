@@ -1,7 +1,11 @@
 #ifndef AID_FORTRAN_EXPRESSION_H
 #define AID_FORTRAN_EXPRESSION_H
 
+#include "symbols.h"
+
+#include <cassert>
 #include <format>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -26,9 +30,19 @@ enum class operator_t {
 
 class unit;  // forward reference
 
+class expression_node;
+using expression_t = std::shared_ptr<expression_node>;
+
+using argument_map_t = std::map<symbol_name, expression_t>;
+
 class expression_node {
     public:
         virtual ~expression_node() = default;
+
+        expression_t clone(argument_map_t const &args) const {
+            return do_clone(args);
+        }
+
         std::string generate_address() const { return do_generate_address(); }
         std::string generate_value() const { return do_generate_value(); }
         void mark_referenced(unit &u, unsigned &temp_count) {
@@ -36,16 +50,16 @@ class expression_node {
         }
 
     private:
+        virtual expression_t do_clone(argument_map_t const &args) const = 0;
         virtual std::string do_generate_address() const {
-            // This default implementation is appropriate for many but not all
-            // expression node types.
-            return std::format("tmp({})", do_generate_value());
+            assert(false &&
+                   "temp_variable_node should have eliminated the need for a"
+                   "default implementation of do_generate_address");
+            return "BUG BUG BUG";
         }
         virtual std::string do_generate_value() const = 0;
         virtual void do_mark_referenced(unit &, unsigned &) {};
 };
-
-using expression_t = std::shared_ptr<expression_node>;
 
 }
 

@@ -165,6 +165,7 @@
     <ClCompile Include="utility.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="arithmeticfunction.h" />
     <ClInclude Include="cgenerator.h" />
     <ClInclude Include="datalist.h" />
     <ClInclude Include="expression.h" />

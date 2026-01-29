@@ -1,6 +1,7 @@
 #ifndef AID_FORTRAN_PARSER_H
 #define AID_FORTRAN_PARSER_H
 
+#include "arithmeticfunction.h"
 #include "basicstatement.h"
 #include "datalist.h"
 #include "expressions.h"
@@ -206,8 +207,9 @@ class parser {
         expected<variable_list_t> parse_variable_list();
         expected<variable_list_item_t> parse_variable_list_item();
         expected<constant_index_control_t> parse_constant_index_control();
+        expected<index_list_t> parse_index_list();
+        expected<index_t> parse_index();
         expected<subscript_list_t> parse_subscript_list();
-        expected<subscript_t> parse_subscript();
         symbol_name parse_identifier();
         expected<openkey> parse_open_keyword();
         expected<operator_t> parse_operator();
@@ -328,6 +330,7 @@ class parser {
         unit m_subprogram;
         implicit m_implicit;
         std::map<symbol_name, unsigned> m_common_counts;
+        std::map<symbol_name, arithmetic_function_t> m_arithmetic_functions;
         phase_t m_phase = phase0;
         bool m_current_subprogram_is_main = false;
         statement_number_t m_statement_number = no_statement_number;

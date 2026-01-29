@@ -29,17 +29,17 @@ using io_list_t = std::vector<io_list_item>;
 // DATA statements use a restricted form of i/o lists, but trying to use the
 // general io_list_t for DATA was more trouble than it was worth, so I made a
 // similar-but-different variable_list_t.
-struct subscript_t {
+struct index_t {
     symbol_name    induction;
     machine_word_t coefficient;
     machine_word_t offset;
 };
 
-using subscript_list_t = std::vector<subscript_t>;
+using index_list_t = std::vector<index_t>;
 
 struct variable_list_item_t {
     symbol_name              variable;
-    subscript_list_t         subscripts;  // empty if variable is scalar
+    index_list_t             indices;  // empty if variable is scalar
     constant_index_control_t index_control;
 };
 

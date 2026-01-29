@@ -56,15 +56,25 @@ namespace {
 
 }  // anonymous namespace
 
+expression_t unary_node::do_clone(argument_map_t const &args) const {
+    return std::make_shared<unary_node>(m_op, m_node->clone(args));
+}
+
 std::string unary_node::do_generate_value() const {
     return std::format("{}({})",
                        operator_function(m_op), m_node->generate_value());
 }
 
+
 void unary_node::do_mark_referenced(unit &u, unsigned &t) {
     m_node->mark_referenced(u, t);
 }
 
+
+expression_t binary_node::do_clone(argument_map_t const &args) const {
+    return std::make_shared<binary_node>(
+        m_lhs->clone(args), m_op, m_rhs->clone(args));
+}
 
 std::string binary_node::do_generate_value() const {
     return std::format("{}({}, {})",
@@ -78,10 +88,21 @@ void binary_node::do_mark_referenced(unit &u, unsigned &t) {
 }
 
 
+expression_t constant_node::do_clone(argument_map_t const &) const {
+    return std::make_shared<constant_node>(m_constant);
+}
+
 std::string constant_node::do_generate_value() const {
     return std::format("{}", m_constant);
 }
 
+
+expression_t variable_node::do_clone(argument_map_t const &args) const {
+    if (auto const it = args.find(m_name); it != args.end()) {
+        return it->second;
+    }
+    return std::make_shared<variable_node>(m_name);
+}
 
 std::string variable_node::do_generate_address() const {
     return std::format("v{}", m_name);
@@ -96,8 +117,13 @@ void variable_node::do_mark_referenced(unit &u, unsigned &) {
 }
 
 
+expression_t temp_variable_node::do_clone(argument_map_t const &args) const {
+    return std::make_shared<temp_variable_node>(m_expr->clone(args));
+}
+
 std::string temp_variable_node::do_generate_address() const {
-    return std::format("((v{0} = {1}, v{0})", name(), m_expr->generate_value());
+    return std::format("((*v{0} = {1}), v{0})",
+                       name(), m_expr->generate_value());
 }
 
 std::string temp_variable_node::do_generate_value() const {
@@ -105,11 +131,11 @@ std::string temp_variable_node::do_generate_value() const {
 }
 
 void temp_variable_node::do_mark_referenced(unit &u, unsigned &counter) {
-    assert(m_count == 0 && "temp already assigned a value?");
     m_count = ++counter;
     // Note that we're not just marking the symbol as referenced, we _may_ be
     // creating it.
     auto symbol = u.find_symbol(name());
+    symbol.type = datatype::INTEGER;  // HACK!!!!
     symbol.referenced = true;
     u.update_symbol(symbol);
     m_expr->mark_referenced(u, counter);
@@ -117,9 +143,13 @@ void temp_variable_node::do_mark_referenced(unit &u, unsigned &counter) {
 
 symbol_name temp_variable_node::name() const {
     assert(m_count > 0 && "forgot to call do_mark_referenced?");
-    return symbol_name{std::format("TMP{:03}", m_count)};
+    return symbol_name{std::format("tmp{:03}", m_count)};
 }
 
+
+expression_t external_node::do_clone(argument_map_t const &) const {
+    return std::make_shared<external_node>(m_name);
+}
 
 std::string external_node::do_generate_address() const {
     return std::format("(word_t *){}", do_generate_value());
@@ -135,6 +165,11 @@ void external_node::do_mark_referenced(unit &u, unsigned &) {
 }
 
 
+expression_t array_index_node::do_clone(argument_map_t const &args) const {
+    return std::make_shared<array_index_node>(
+        m_array, m_index_expr->clone(args));
+}
+
 std::string array_index_node::do_generate_address() const {
     return std::format("(v{} + {})", m_array, m_index_expr->generate_value());
 }
@@ -148,19 +183,18 @@ void array_index_node::do_mark_referenced(unit &u, unsigned &t) {
     m_index_expr->mark_referenced(u, t);
 }
 
-
 // Returns an expression to compute the 1-dimensional index into a flat array
-// from indices into a hypothetical N-dimensional array.
+// from subscripts into a hypothetical N-dimensional array.
 expression_t array_index_node::make_index_expression(
-    argument_list_t const &indices,
+    subscript_list_t const &subscripts,
     array_shape const &shape
 ) {
-    assert(!shape.empty() && shape.size() == indices.size());
-    auto result = zero_based(indices[0], shape[0]);
+    assert(!shape.empty() && shape.size() == subscripts.size());
+    auto result = zero_based(subscripts[0], shape[0]);
     auto scale = shape[0].size();
     for (std::size_t i = 1; i < shape.size(); ++i) {
         auto const component =
-            scale_up(zero_based(indices[i], shape[i]), scale);
+            scale_up(zero_based(subscripts[i], shape[i]), scale);
         result =
             std::make_shared<binary_node>(result, operator_t::add, component);
         scale *= shape[i].size();
@@ -186,9 +220,20 @@ expression_t array_index_node::scale_up(
 }
 
 
+expression_t function_invocation_node::do_clone(
+    argument_map_t const &args
+) const {
+    argument_list_t cloned_args;
+    cloned_args.reserve(m_arguments.size());
+    for (auto const &arg : m_arguments) {
+        cloned_args.push_back(arg->clone(args));
+    }
+    return std::make_shared<function_invocation_node>(
+        m_function, std::move(cloned_args));
+}
+
 std::string function_invocation_node::do_generate_value() const {
-    return std::format("EVAL(fn{}({}))",
-                       m_function, formatted_args(m_arguments));
+    return std::format("fn{}({})", m_function, formatted_args(m_arguments));
 }
 
 void function_invocation_node::do_mark_referenced(unit &u, unsigned &t) {
@@ -208,6 +253,33 @@ std::string function_invocation_node::formatted_args(
         formatted.append(arg->generate_address());
     }
     return formatted;
+}
+
+
+expression_t inlined_internal_node::do_clone(argument_map_t const &args) const {
+    return std::make_shared<inlined_internal_node>(m_name, m_expr->clone(args));
+}
+
+std::string inlined_internal_node::do_generate_value() const {
+    return std::format("/*{}*/{}", m_name, m_expr->generate_value());
+}
+
+void inlined_internal_node::do_mark_referenced(unit &u, unsigned &t) {
+    u.mark_symbol_referenced(m_name);
+    m_expr->mark_referenced(u, t);
+}
+
+expression_t inlined_internal_node::instantiate(
+    arithmetic_function_t const &func,
+    argument_list_t const &args
+) {
+    assert(args.size() == func.params.size());
+    auto variable_substitutions = argument_map_t{};
+    for (auto i = 0uz; i < args.size(); ++i) {
+        variable_substitutions[func.params[i]] = args[i];
+    }
+
+    return func.definition->clone(variable_substitutions);
 }
 
 }

@@ -325,6 +325,9 @@ parser::expected<statement_t> parser::parse_end() {
 
 parser::expected<statement_t>
 parser::parse_arithmetic_function_definition(symbol_name const &name) {
+    if (m_arithmetic_functions.contains(name)) {
+        return error("cannot re-define arithmetic function '{}'", name);
+    }
     auto parameters = parse_parameter_list();
     if (!parameters) return error_of(std::move(parameters));
     if (parameters.value().empty()) {
@@ -345,9 +348,10 @@ parser::parse_arithmetic_function_definition(symbol_name const &name) {
     symbol.type = inferred_type(symbol);
     symbol.index = static_cast<unsigned>(parameters.value().size());
     m_subprogram.update_symbol(symbol);
-
-    return make<arithmetic_function_definition_statement>(
-        name, std::move(parameters).value(), std::move(definition).value());
+    m_arithmetic_functions[symbol.name] =
+        arithmetic_function_t{name, std::move(parameters).value(),
+                              std::move(definition).value()};
+    return nullptr;
 }
 
 parser::expected<statement_t> parser::parse_common() {
@@ -417,7 +421,7 @@ parser::expected<statement_t> parser::parse_data() {
                      item.variable);  // also, we don't support BLOCK DATA
             }
             if (symbol.shape.empty()) {     // scalar
-                assert(item.subscripts.empty());
+                assert(item.indices.empty());
                 if (data_iter == data_end) {
                     return error("more variables than values in DATA "
                                  "statement");
@@ -425,7 +429,7 @@ parser::expected<statement_t> parser::parse_data() {
                 symbol.init_data.push_back((*data_iter++).value);
             } else {                        // array
                 // TODO:  Generalize for more than 1 dimension.
-                assert(item.subscripts.size() == 1);
+                assert(item.indices.size() == 1);
                 auto const &control = item.index_control;
                 if (control.step == 0) {
                     return error("induction step cannot be 0");
@@ -437,7 +441,7 @@ parser::expected<statement_t> parser::parse_data() {
                 }
                 auto const lower = std::min(control.init, control.limit);
                 auto const upper = std::max(control.init, control.limit);
-                auto const &subscript = item.subscripts[0];
+                auto const &subscript = item.indices[0];
                 auto &init_data = symbol.init_data;
                 init_data.reserve(core_size(symbol));
                 auto const &shape = symbol.shape;
@@ -621,14 +625,14 @@ parser::expected<statement_t> parser::parse_assignment() {
         if (symbol.kind == symbolkind::subprogram) {
             return error("did you mean to CALL {}?", name);
         }
-        auto indices = parse_argument_list();
-        if (!indices) return error_of(std::move(indices));
-        if (indices.value().size() != symbol.shape.size()) {
-            return error("wrong number of indices for {}", name);
+        auto subscripts = parse_subscript_list();
+        if (!subscripts) return error_of(std::move(subscripts));
+        if (subscripts.value().size() != symbol.shape.size()) {
+            return error("wrong number of subscripts for {}", name);
         }
         lvalue =
             std::make_shared<array_index_node>(name, symbol.shape,
-                                               std::move(indices).value());
+                                               std::move(subscripts).value());
     } else {
         lvalue = std::make_shared<variable_node>(name);
     }
@@ -1055,7 +1059,8 @@ parser::expected<expression_t> parser::parse_atom() {
         auto const name = parse_identifier();
         if (name.empty()) return error("expected identifier in expression");
         auto symbol = m_subprogram.find_symbol(name);
-        if (!match('(')) {
+
+        if (!match('(')) {  // variables and externals
             if (symbol.kind == symbolkind::external) {
                 return std::make_shared<external_node>(name);
             }
@@ -1063,16 +1068,23 @@ parser::expected<expression_t> parser::parse_atom() {
             return std::make_shared<variable_node>(name);
         }
 
+        if (!symbol.shape.empty()) {  // array subscripts
+            auto subscripts = parse_subscript_list();
+            if (!subscripts) return error_of(std::move(subscripts));
+            if (subscripts.value().size() != symbol.shape.size()) {
+                return error("array has {} dimension(s) but only {} "
+                             "subscript(s) were provided", symbol.shape.size(),
+                             subscripts.value().size());
+            }
+            return
+                std::make_shared<array_index_node>(
+                    name, symbol.shape, std::move(subscripts).value());
+        }
+
+        // function arguments
         auto arguments = parse_argument_list();
         if (!arguments) return error_of(std::move(arguments));
         auto const args = std::move(arguments).value();
-        if (!symbol.shape.empty()) {
-            if (args.size() != symbol.shape.size()) {
-                return error("array has {} dimension(s) but only {} index(es) "
-                             "were provided", symbol.shape.size(), args.size());
-            }
-            return std::make_shared<array_index_node>(name, symbol.shape, args);
-        }
         if (symbol.kind == symbolkind::local) {
             // Either the program has an error, or this is actually a subprogram
             // (specifically a FUNCTION) that hasn't yet been defined.
@@ -1088,10 +1100,17 @@ parser::expected<expression_t> parser::parse_atom() {
             return error("cannot invoke SUBROUTINE {} in an expression",
                          symbol.name);
         }
-        if (symbol.kind == symbolkind::subprogram ||
-            symbol.kind == symbolkind::internal
-        ) {
+        if (args.size() != symbol.index) {
+            return error("'{}' requires {} argument{}, but {} provided",
+                symbol.name, symbol.index, symbol.index != 1 ? "s" : "",
+                args.size());
+        }
+        if (symbol.kind == symbolkind::subprogram) {
             return std::make_shared<function_invocation_node>(name, args);
+        } else if (symbol.kind == symbolkind::internal) {
+            assert(m_arithmetic_functions.contains(symbol.name));
+            return std::make_shared<inlined_internal_node>(
+                m_arithmetic_functions[symbol.name], args);
         }
         return error("syntax error in expression near '{}'", name);
     }
@@ -1168,9 +1187,9 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         if (symbol.shape.empty()) {
             return error("expected array name, saw '{}'", array);
         }
-        auto subscripts = parse_argument_list();
-        if (!subscripts) return error_of(std::move(subscripts));
-        if (subscripts.value().size() != symbol.shape.size()) {
+        auto indices = parse_argument_list();
+        if (!indices) return error_of(std::move(indices));
+        if (indices.value().size() != symbol.shape.size()) {
             return error("expected {} subscripts for '{}'",
                          symbol.shape.size(), array);
         }
@@ -1181,7 +1200,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
         auto control = parse_index_control();
         if (!control) return error_of(std::move(control));
         if (!accept(')')) return error("missing ')' after index control");
-        return io_list_item{array, std::move(subscripts).value(),
+        return io_list_item{array, std::move(indices).value(),
                             std::move(control).value()};
     }
 
@@ -1339,9 +1358,33 @@ parser::expected<argument_list_t> parser::parse_argument_list() {
 }
 
 parser::expected<expression_t> parser::parse_argument() {
-    // TODO:  Make a variable address node or a temporary variable node that
-    // wraps the general expression.
-    return parse_expression();
+    auto const bookmark = position();
+    auto const name = parse_identifier();
+    if (!name.empty() && (match(',') || match(')'))) {
+        // It's just a variable or external, so it has an address we can use as
+        // the argument expression.
+        auto symbol = m_subprogram.find_symbol(name);
+        if (symbol.type == datatype::unknown) {
+            infer_type_and_update(symbol);
+        }
+        switch (symbol.kind) {
+            case symbolkind::external:
+                return std::make_shared<external_node>(symbol.name);
+            case symbolkind::local:
+            case symbolkind::common:
+            case symbolkind::shadow:
+            case symbolkind::argument:
+            case symbolkind::retval:
+                return std::make_shared<variable_node>(symbol.name);
+        }
+        return error("cannot use {} as an argument", symbol.name);
+    }
+    // Whoops, back up.  It's a more complex expression that will have to be
+    // stashed in a temporary variable in order to pass by reference.
+    m_it = bookmark;
+    auto expr = parse_expression();
+    if (!expr) return error_of(std::move(expr));
+    return std::make_shared<temp_variable_node>(std::move(expr).value());
 }
 
 parser::expected<parser::keyword> parser::parse_keyword() {
@@ -1390,9 +1433,9 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
         if (symbol.shape.empty()) {
             return error("expected array name, saw '{}'", array);
         }
-        auto subscripts = parse_subscript_list();
-        if (!subscripts) return error_of(std::move(subscripts));
-        if (subscripts.value().size() != symbol.shape.size()) {
+        auto indices = parse_index_list();
+        if (!indices) return error_of(std::move(indices));
+        if (indices.value().size() != symbol.shape.size()) {
             return error("expected {} subscripts for '{}'",
                          symbol.shape.size(), array);
         }
@@ -1403,7 +1446,7 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
         auto control = parse_constant_index_control();
         if (!control) return error_of(std::move(control));
         if (!accept(')')) return error("missing ')' after index control");
-        return variable_list_item_t{array, std::move(subscripts).value(),
+        return variable_list_item_t{array, std::move(indices).value(),
                                     std::move(control).value()};
     }
 
@@ -1421,15 +1464,15 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
     
     if (symbol.shape.empty()) return variable_list_item_t{name};
     if (match('(')) {
-        auto subscripts = parse_subscript_list();
-        if (!subscripts) return error_of(std::move(subscripts));
-        return variable_list_item_t{name, std::move(subscripts).value()};
+        auto indices = parse_index_list();
+        if (!indices) return error_of(std::move(indices));
+        return variable_list_item_t{name, std::move(indices).value()};
     }
 
     // Implicitly apply to the entire array.
     // TODO:  Generalize for more than 1 dimension.
-    auto const subscripts = subscript_list_t{
-        subscript_t{
+    auto const indices = index_list_t{
+        index_t{
             .induction = symbol_name{"_I_"},
             .coefficient = 1,
             .offset = 0
@@ -1441,25 +1484,25 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
         .limit = symbol.shape[0].maximum,
         .step  = 1
     };
-    return variable_list_item_t{name, subscripts, index_control};
+    return variable_list_item_t{name, indices, index_control};
 }
 
 parser::expected<constant_index_control_t>
 parser::parse_constant_index_control() {
-    auto const index = parse_identifier();
-    if (index.empty()) return error("missing index variable");
+    auto const induction = parse_identifier();
+    if (induction.empty()) return error("missing induction variable");
 
-    auto symbol = m_subprogram.find_symbol(index);
+    auto symbol = m_subprogram.find_symbol(induction);
     if (symbol.type == datatype::unknown) {
         symbol.type = datatype::INTEGER;
     }
     if (symbol.type != datatype::INTEGER) {
-        return error("index must be an integer variable");
+        return error("induction variable must be an integer");
     }
     if (symbol.kind == symbolkind::subprogram ||
         symbol.kind == symbolkind::external
     ) {
-        return error("index cannot be a subprogram");
+        return error("induction variable cannot be a subprogram");
     }
     if (!symbol.shape.empty()) return error("index cannot be an array");
     m_subprogram.update_symbol(symbol);
@@ -1487,32 +1530,44 @@ parser::parse_constant_index_control() {
         }
         step = k2.value().value;
     }
-    return constant_index_control_t{index, init, limit, step};
+    return constant_index_control_t{induction, init, limit, step};
+}
+
+parser::expected<index_list_t> parser::parse_index_list() {
+    auto list = index_list_t{};
+    if (!accept('(')) return error("expected '(' for subscripting");
+    do {
+        auto index = parse_index();
+        if (!index) return error_of(std::move(index));
+        list.push_back(std::move(index).value());
+    } while (accept(','));
+    if (!accept(')')) return error("expected ')' after subscript");
+    return list;
+}
+
+parser::expected<index_t> parser::parse_index() {
+    // TODO:  Allow any permutation of:  coefficient * index +|- offset
+    auto const induction = parse_identifier();
+    if (induction.empty()) return error("expected induction variable");
+    machine_word_t coefficient = 1;
+    machine_word_t offset = 0;
+    return index_t{
+        .induction = induction,
+        .coefficient = coefficient,
+        .offset = offset
+    };
 }
 
 parser::expected<subscript_list_t> parser::parse_subscript_list() {
     auto list = subscript_list_t{};
     if (!accept('(')) return error("expected '(' for subscripting");
     do {
-        auto subscript = parse_subscript();
+        auto subscript = parse_expression();
         if (!subscript) return error_of(std::move(subscript));
         list.push_back(std::move(subscript).value());
     } while (accept(','));
     if (!accept(')')) return error("expected ')' after subscript");
     return list;
-}
-
-parser::expected<subscript_t> parser::parse_subscript() {
-    // TODO:  Allow any permutation of:  coefficient * index +|- offset
-    auto const induction = parse_identifier();
-    if (induction.empty()) return error("expected induction variable");
-    machine_word_t coefficient = 1;
-    machine_word_t offset = 0;
-    return subscript_t{
-        .induction = induction,
-        .coefficient = coefficient,
-        .offset = offset
-    };
 }
 
 symbol_name parser::parse_identifier() {
@@ -1751,6 +1806,7 @@ parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {
     m_subprogram = unit{name};
     m_implicit.reset();
     m_common_counts.clear();
+    m_arithmetic_functions.clear();
     m_current_subprogram_is_main = true;
     m_phase = phase1;
     return true;
@@ -1770,6 +1826,7 @@ parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
     m_subprogram = unit{name};
     m_implicit.reset();
     m_common_counts.clear();
+    m_arithmetic_functions.clear();
     m_phase = phase1;
     return true;
 }

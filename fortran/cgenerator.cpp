@@ -534,32 +534,6 @@ const word_t logical_false = (word_t)0;
 bool truth(word_t w) { return (w < 0) ? true : false; }
 word_t logical(bool b) { return b ? logical_true : logical_false; }
 
-// A buffer for passing temporaries by reference.
-#define TMP_BUFFER_SIZE 256u
-static word_t temps[TMP_BUFFER_SIZE];
-static word_t tmp_index = 0;
-static word_t tmp_frame = 0;
-word_t *tmp(word_t x) {
-    assert(0 <= tmp_index && tmp_index < TMP_BUFFER_SIZE);
-    if (tmp_index < 0 || TMP_BUFFER_SIZE < tmp_index) return NULL;
-    temps[tmp_index] = x;
-    return &temps[tmp_index++];
-}
-word_t tmp_push() {
-    assert(0 <= tmp_frame && tmp_frame <= tmp_index && tmp_index < TMP_BUFFER_SIZE);
-    temps[tmp_index] = tmp_frame;
-    tmp_frame = tmp_index++;
-    return 0;
-}
-word_t tmp_pop(word_t x) {
-    tmp_index = tmp_frame;
-    tmp_frame = temps[tmp_index];
-    assert(0 <= tmp_frame && tmp_frame <= tmp_index && tmp_index < TMP_BUFFER_SIZE);
-    return x;
-}
-#define EVAL(EXPR) (tmp_push(), tmp_pop(EXPR))
-#define CALL(SUB)  do { tmp_push(); SUB; tmp_pop(0); } while (false)
-
 // Types for coercing function pointers for indirect subroutine calls.
 typedef void (*psub0)();
 typedef void (*psub1)(word_t*);
