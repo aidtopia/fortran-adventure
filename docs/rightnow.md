@@ -114,4 +114,4 @@ Hey, it works!
 
 ## Statement Function Parameters
 
-A separate document about the problem of [Statement Function Parameters](stmdfuncparams.md).
+A separate document about the problem of [Statement Function Parameters](arithfuncparams.md).

@@ -1,10 +1,10 @@
-## Statement Function Parameters
+## Arithmetic Function Parameters
 
-Fortran statement functions were causing the C code to contain declarations for unused variables.
+Fortran arithmetic function definition statements were causing the C code to contain declarations for unused variables.
 
 ### The Problem
 
-The problem arises from the parameters used in the definition of the statement function.  Although statement functions are similar to `FUNCTION` subprograms, the implementation treats them more as a macro defined in the current subprogram.  In fact, the translator converts them to function-style C preprocessor macros.
+The problem arises from the parameters used in the definition of the arithmetic function.  Although arithmetic functions are similar to `FUNCTION` subprograms, the implementation treats them as a macro defined in the current subprogram.  In fact, the translator used to> convert them directly to function-style C preprocessor macros.  Now it inlines the definining expression whereever an arithmetic function is invoked
 
 Here's an example from Adventure:
 
@@ -20,7 +20,7 @@ The translator doesn't define unreferenced variables in the C code, but that doe
 
 As a result, when the translator generated the code for the subprogram that contained this definition, it included `vPOTBL` as a local variable.  The C compiler recognizes that it was defined but never referenced and emits a warning.
 
-(Until recently, the compiler wasn't warning about these because the defined-but-unreferenced variables were not initialized.  But recent changes resurfaced the warnings, because now the variables are represented in the C code as pointers initialized to a particular location in the memory array.)
+(Until recently, the MSVC compiler wasn't warning about these because the defined-but-unreferenced variables were not initialized.  As the translation model evolved, the C variables where changed to pointers into the memory array, which required they be initialized.  Future evolution may use indices rather than pointers.)
 
 Not every parameter of every statement function resulted in a warning.  In fact, most didn't.  Here's another example from Adventure:
 
@@ -28,7 +28,7 @@ Not every parameter of every statement function resulted in a warning.  In fact,
       TOTING(OBJ)=PLACE(OBJ).EQ.-1
 ```
 
-In this case, `OBJ` did not result in an unreferenced variable because `OBJ` is _also_ a local variable in the subprogram.  `OBJ` is essentially two different symbols from two scopes:  the subprogram and the statement function definition.  The statement-function `OBJ` shadows the `OBJ` local variable.  The symbol table cannot represent shadowing, so these were conflated to a single symbol.  The generated code works because the `OBJ` in the resulting macro is just a placeholder that's replaced textually, so there's no actual shadowing or aliasing.
+In this case, `OBJ` did not result in an unreferenced variable because `OBJ` is _also_ a local variable in the subprogram.  `OBJ` is essentially two different symbols from two scopes:  the subprogram and the arithmetic function definition.  The arithmetic-function `OBJ` shadows the local variable `OBJ`.  The symbol table didn't represent shadowing, so these were conflated to a single symbol.  The generated code worked because the `OBJ` in the resulting macro is just a placeholder that's replaced textually, so there's no actual shadowing or aliasing.
 
 Although the effect on the translation of Adventure is harmless, the C compiler warnings point to a lurking problem.  If the statement function parameter name collides with anything other than a scalar local, translation might fail altogether.
 
@@ -36,7 +36,7 @@ Although the effect on the translation of Adventure is harmless, the C compiler 
 
 I considered and dismissed these solutions:
 
-* Generalize the symbol table to handle nested scopes.  This would be a very general approach to a very narrow problem.  For the versions of Fortran used in the Adventure code, statement function definition parameter names are the only symbols that can shadow others.  In theory the shadowing could cause significant problems (e.g., if the shadowed local symbol represented an array or subprogram).  But in the Adventure code, the only problem is a couple warnings from the C compiler.
+* Generalize the symbol table to handle nested scopes.  This would be a very general approach to a very narrow problem.  For the versions of Fortran used in the Adventure code, arithmetic function parameter names are the only symbols that can shadow others.  In theory the shadowing could cause significant problems (e.g., if the shadowed local symbol represented an array or subprogram).  But in the Adventure code, the only problem is a couple warnings from the C compiler.
 
 * Fake nested scopes at the unit level.  Currently, each subprogram is represented as a unit, and the unit for the main subprogram contains the units for other `FUNCTION` and `SUBROUTINE` subprograms.  This is largely a convient way to bundle an entire program together.  If any unit could contain subunits, we could possibly fake nested scopes.
 
@@ -44,7 +44,7 @@ I considered and dismissed these solutions:
 
 ### The Hack
 
-For now, I've:
+My first attempt was a hack:
 
 * Extended `symbolkind` with `fake` to represent a function statement parameter name.
 
@@ -56,7 +56,7 @@ For now, I've:
 
   * "Remove" the fake symbols immediately after parsing the expression.
 
-While that does eliminate the unreferenced variable warnings from the C compiler, I'm not happy about any of those changes.
+While that did eliminate the unreferenced variable warnings from the C compiler, I wasn't happy about any of the changes.
 
 * `fake` is a terrible name.
 
@@ -87,3 +87,7 @@ I iterated on the hack like this:
 * Broke out `parser::parse_statement_function_expression` to make clear that the parameters are added and then immediately removed.
 
 This solves the C compiler warnings but also eliminates the lurking risk of aliasing, as the symbol for the parameter is distinct from any other symbol in the table.
+
+### The Solution
+
+In the end, I adopted Hack 2 with some better naming (`symbolkind::shadow`) and a little more refactoring.

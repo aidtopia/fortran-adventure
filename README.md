@@ -12,19 +12,19 @@ Here's the status of those efforts (using [The Adventure Family Tree](https://mi
 
 | Version | Translates | Compiles | Executes | Saves State |
 |:--------|:-----------|:---------|:---------|:------------|
-|[**WOOD0350 Ver. 2**](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES | YES<sup>_b_</sup>| YES | YES<sup>_f_</sup> |
-|[WOOD0350 Ver. 1](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES<sup>_c_</sup> | YES<sup>_b_</sup> | YES<sup>_e_</sup> | YES<sup>_f_</sup> |
+|[**WOOD0350 Ver. 2**](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES | YES | YES | YES<sup>_f_</sup> |
+|[WOOD0350 Ver. 1](https://mipmip.org/advfamily/advfamily.html#WOOD0350)| YES<sup>_c_</sup> | YES | YES<sup>_e_</sup> | YES<sup>_f_</sup> |
 |[CROW0000 (F4, 1977-03-31)](https://mipmip.org/advfamily/advfamily.html#CROW0000)| YES<sup>_g_</sup> | YES<sup>_h_</sup> | YES<sup>_e, i_</sup> | no<sup>_j_</sup> |
 |[BLKT0350](https://mipmip.org/advfamily/advfamily.html#BLKT0350)<sup>_k_</sup> | no | no | no | no |
 |[SUPN0350](https://mipmip.org/advfamily/advfamily.html#SUPN0350)<sup>_k_</sup> | no | no | no | no |
 
 * <sup>_a_</sup> <ins>fixed</ins> <del>The compiler warns about two variables that are declared but unused.  These can be ignored.  The problem is understood but not currently a high priority.</del>
-* <sup>_b_</sup> When optimization is enabled, the C compiler does more flow analysis and discovers a few instances of unreachable code, causing warnings.  The problem is understood but not currently a high priority.
+* <sup>_b_</sup> <ins>fixed</ins> <del>When optimization is enabled, the C compiler does more flow analysis and discovers a few instances of unreachable code, causing warnings.  The problem is understood but not currently a high priority.</del>
 * <sup>_c_</sup> The translator warns about a type specification statement used later than it should be.  This is technically a bug in the Fortran source, but it's harmless in this case.
 * <sup>_d_</sup> <ins>fixed</ins> <del>The tools\test.bat file does not properly handle the fact that this version is split into multiple source files, so you have to invoke the translator manually with both source files in the same command.</del>
 * <sup>_e_</sup> The game expects its data file to be named `TEXT` (no directory path, no extension).  Launch the program with the command line option `-fTEXT=<path>` where `<path>` is the path to the actual data file.
-* <sup>_f_</sup> When the program is ending, the user is given an option to save a "core image" to a file.  The `-c<file>` option allows loading a previously saved core image.
-* <sup>_g_</sup> Translator will warn about use of REAL, but it works.
+* <sup>_f_</sup> When the program is ending, the user is given an option to save a "core image" to a file.  The `-l<file>` option allows loading a previously saved core image.
+* <sup>_g_</sup> Translator will warn about limited support of REAL, but that support is sufficient for this version.
 * <sup>_h_</sup> <ins>fixed</ins> <del>Compiler warns of unreachable code because the source has unreachable code.<del>
 * <sup>_i_</sup> Commands must be ALL CAPS.  You can launch with the `-CAPS` option to have keyboard input transliterated to uppercase.
 * <sup>_j_</sup> This version runs until the user breaks out (e.g., Ctrl+C), which bypasses the chance to save the core image.
