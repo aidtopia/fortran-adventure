@@ -391,9 +391,8 @@ std::string c_generator::generate_return_value(unit const &u) {
     auto const retvals = u.extract_symbols(is_return_value); 
     if (retvals.empty()) return {};
     assert(retvals.size() == 1);
-    auto const &retval = retvals.front();
-    return std::format(" word_t *{} = &core[{}];  // return value\n",
-                       name(retval), retval.address);
+    assert(retvals.front().shape.empty());
+    return generate_scalar_definition(retvals.front());
 }
 
 std::string c_generator::generate_dummies(unit const &u) {
@@ -488,6 +487,9 @@ std::string c_generator::generate_scalar_definition(symbol_info const &var) {
                     name(var), var.address);
     if (!var.init_data.empty()) {
         result += std::format(" // = {}", var.init_data[0]);
+    }
+    if (var.kind == symbolkind::retval) {
+        result += std::format(" // return value");
     }
     result += '\n';
     return result;
