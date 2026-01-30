@@ -38,16 +38,6 @@ namespace {
                 return std::format("v{}", sym.name);
         }
     }
-    static std::string macro_defined(std::string_view c_stmt) {
-        auto constexpr directive = "#define "sv;
-        if (!c_stmt.starts_with(directive)) return {};
-        auto const begin = c_stmt.cbegin() + directive.size();
-        auto it = begin;
-        while (it != c_stmt.end() && *it == ' ') ++it;
-        if (it == c_stmt.end()) return {};
-        while (it != c_stmt.end() && std::isalnum(*it)) ++it;
-        return std::string(begin, it);
-    }
 
     struct builtin_t {
         symbol_name name;
@@ -370,18 +360,11 @@ std::string c_generator::generate_function_signature(unit const &u) {
 
 std::string c_generator::generate_statements(unit const &u) {
     auto result = std::string{};
-    auto macros_to_undef = std::vector<std::string>{};
     for (auto const &statement : u.code()) {
         if (!statement->is_reachable()) continue;
         if (auto const c_stmt = statement->generate(u); !c_stmt.empty()) {
             result += std::format(" {}\n", c_stmt);
-            if (auto const macro = macro_defined(c_stmt); !macro.empty()) {
-                macros_to_undef.push_back(macro);
-            }
         }
-    }
-    for (auto const &macro : macros_to_undef) {
-        result += std::format(" #undef {}\n", macro);
     }
 
     return result;
