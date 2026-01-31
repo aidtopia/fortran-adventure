@@ -80,8 +80,7 @@ std::string indirect_call_statement::do_generate(unit const &) const {
 
 void indirect_call_statement::do_mark_reachable(unit &u, unsigned &t) {
     call_statement::do_mark_reachable(u, t);
-    // TODO:  Add typedef to coerce the value to a C function pointer
-    // with the right number of params.
+    u.add_subroutine_pointer_type(m_args.size());
 }
 
 

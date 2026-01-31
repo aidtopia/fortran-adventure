@@ -126,17 +126,17 @@ struct symbol_info {
     bool        referenced;
 
     // NOTE the meaning of the index field above depends on the kind:
-    //  symbolkind::
-    //      local       index not needed
-    //      common      index is the slot into the common block
-    //      argument    index is the argument's position in the arg list
-    //      retval      index not needed
+    //  symbolkind::    index is
+    //      local       not needed
+    //      common      variable's relative position in the common block
+    //      argument    argument's position in the arg list
+    //      retval      not needed
     //      subprogram  number of arguments needed to call or invoke
     //      internal    number of arguments needed to invoke
-    //      external    index not needed
-    //      label       index not needed
-    //      format      index not needed
-    //      shadow      index not needed, but could be set like argument index
+    //      external    not needed
+    //      label       not needed
+    //      format      not needed
+    //      shadow      not needed, but could be set like argument index
     //
     // `referenced` means the symbol is assigned to (other than initial data),
     // read from, called, invoked, or ref-passed.  For labels, it means it is

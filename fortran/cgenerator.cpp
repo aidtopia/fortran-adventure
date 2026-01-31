@@ -342,12 +342,13 @@ std::string c_generator::generate_unit(unit const &u) {
     auto const commons   = generate_common_variable_declarations(u);
     auto const locals    = generate_local_variable_declarations(u);
     auto const externals = generate_external_declarations(u);
+    auto const typedefs  = generate_subprogram_typedefs(u);
     auto const formats   = generate_format_specifications(u);
     auto const code      = generate_statements(u);
     return
-        std::format("\n{} {{\n{}{}{}{}{}{}{}}}\n",
-            signature, retval, dummies, commons, locals, externals, formats,
-            code);
+        std::format("\n{} {{\n{}{}{}{}{}{}{}{}}}\n",
+            signature, retval, dummies, commons, locals, externals, typedefs,
+            formats, code);
 }
 
 std::string c_generator::generate_function_signature(unit const &u) {
@@ -504,6 +505,25 @@ std::string c_generator::generate_external_declarations(unit const &u) {
     return result;
 }
 
+std::string c_generator::generate_subprogram_typedefs(unit const &u) {
+    auto r = u.extract_subroutine_pointer_types();
+    auto f = u.extract_function_pointer_types();
+    if ((r|f) == 0) return {};
+    auto result = " // Function pointer types for indirect calls\n"s;
+    auto args = std::string{};
+    for (auto i = 0u; (r|f) != 0; r >>= 1, f >>= 1, ++i) {
+        if (r & 1) {
+            result += std::format(" typedef void (*psub{})({});\n", i, args);
+        }
+        if (f & 1) {
+            result += std::format(" typedef word_t (*pfun{})({});\n", i, args);
+        }
+        if (!args.empty()) args += ", ";
+        args += "word_t *";
+    }
+    return result;
+}
+
 void c_generator::add_initializer(symbol_info const &var) {
     if (var.init_data.empty() && var.kind != symbolkind::external) return;
     m_initializers.push_back(var);
@@ -544,15 +564,6 @@ const word_t logical_true  = (word_t)-1;
 const word_t logical_false = (word_t)0;
 bool truth(word_t w) { return (w < 0) ? true : false; }
 word_t logical(bool b) { return b ? logical_true : logical_false; }
-
-// Types for coercing function pointers for indirect subroutine calls.
-typedef void (*psub0)();
-typedef void (*psub1)(word_t*);
-typedef void (*psub2)(word_t*,word_t*);
-typedef void (*psub3)(word_t*,word_t*,word_t*);
-typedef void (*psub4)(word_t*,word_t*,word_t*,word_t*);
-typedef void (*psub5)(word_t*,word_t*,word_t*,word_t*,word_t*);
-typedef void (*psub6)(word_t*,word_t*,word_t*,word_t*,word_t*,word_t*);
 
 // Helpers for processing expressions:
 word_t fixsign(word_t x) { return (x << (64-36)) >> (64-36); }

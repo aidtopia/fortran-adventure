@@ -8,8 +8,8 @@
 
 namespace aid::fortran {
 
-// entry is a fake symbol name used in unit::m_targets to track the first
-// statement in the subprogram.
+// entry is a fake symbol name used in unit::m_targets to identify the first
+// executable statement in the subprogram.
 auto constexpr entry = symbol_name{"_ENTRY"};
 
 void unit::update_symbol(symbol_info const &symbol) {
@@ -83,6 +83,16 @@ void unit::add_format(symbol_name label, field_list_t &&fields) {
 
 void unit::add_format(statement_number_t number, field_list_t &&fields) {
     add_format(symbol_name{number}, std::move(fields));
+}
+
+void unit::add_subroutine_pointer_type(std::size_t arg_count) {
+    assert(arg_count < sizeof(m_subroutine_types)*CHAR_BIT);
+    m_subroutine_types |= (1u << arg_count);
+}
+
+void unit::add_function_pointer_type(std::size_t arg_count) {
+    assert(arg_count < sizeof(m_function_types)*CHAR_BIT);
+    m_function_types |= (1u << arg_count);
 }
 
 void unit::mark_reachable() {

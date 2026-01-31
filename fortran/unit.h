@@ -78,6 +78,16 @@ class unit {
         void add_statement(statement_t statement);
         statement_block const &code() const { return m_code; }
 
+        void add_subroutine_pointer_type(std::size_t arg_count);
+        void add_function_pointer_type(std::size_t arg_count);
+
+        unsigned extract_subroutine_pointer_types() const {
+            return m_subroutine_types;
+        }
+        unsigned extract_function_pointer_types() const {
+            return m_function_types;
+        }
+
         // TODO:  mark_reachable should be a free function.
         void mark_reachable();
         // TODO:  print_symbol_table should be a free function.
@@ -93,6 +103,8 @@ class unit {
         format_table m_formats;
         statement_block m_code;
         target_table m_targets;
+        unsigned m_subroutine_types = 0u;  // bitmask: if b_n, then n arg count
+        unsigned m_function_types   = 0u;  // bitmask: if b_n, then n arg count
         bool m_reachable = false;
 };
 

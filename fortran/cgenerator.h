@@ -40,6 +40,7 @@ class c_generator {
         std::string generate_array_definition(symbol_info const &var);
         std::string generate_scalar_definition(symbol_info const &var);
         std::string generate_external_declarations(unit const &u);
+        std::string generate_subprogram_typedefs(unit const &u);
 
         void add_initializer(symbol_info const &symbol);
 
