@@ -112,6 +112,9 @@ inline bool is_common(symbol_info const &a) {
 inline bool is_return_value(symbol_info const &a) {
     return a.kind == symbolkind::retval;
 }
+inline bool is_referenced_external(symbol_info const &a) {
+    return a.kind == symbolkind::external;
+}
 inline bool is_referenced_format(symbol_info const &a) {
     return a.kind == symbolkind::format && a.referenced;
 }

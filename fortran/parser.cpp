@@ -1061,9 +1061,6 @@ parser::expected<expression_t> parser::parse_atom() {
         auto symbol = m_subprogram.find_symbol(name);
 
         if (!match('(')) {  // variables and externals
-            if (symbol.kind == symbolkind::external) {
-                return std::make_shared<external_node>(name);
-            }
             infer_type_and_update(symbol);
             return std::make_shared<variable_node>(name);
         }
@@ -1370,8 +1367,8 @@ parser::expected<expression_t> parser::parse_argument() {
         switch (symbol.kind) {
             case symbolkind::external:
                 return std::make_shared<external_node>(symbol.name);
-            case symbolkind::local:
             case symbolkind::common:
+            case symbolkind::local:
             case symbolkind::shadow:
             case symbolkind::argument:
             case symbolkind::retval:

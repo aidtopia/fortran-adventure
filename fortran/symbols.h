@@ -35,16 +35,16 @@ enum class datatype {
 unsigned core_size(datatype type);
 
 enum class symbolkind {
-    local,      // a variable scoped to the program or subprogram
-    common,     // a variable in a common block
-    argument,   // an argument passed in to the subprogram
-    retval,     // a local variable for the return value of the function
-    subprogram, // a subroutine or function (or arithmetic function)
-    internal,   // an arithmetic function, callable like a subprogram
-    external,   // a subprogram that's passed as arg to another
+    local,      // variable scoped to a subprogram
+    common,     // variable in a common block
+    argument,   // variable for an argument passed in to the subprogram
+    retval,     // variable for the return value of the function
+    subprogram, // subroutine or function
+    internal,   // arithmetic function, invokable like a function
+    external,   // variable holding a pointer to a subprogram
     label,      // statement number of a branch target
     format,     // statement number of a FORMAT specification
-    shadow      // a parameter in an arithmetic function definition
+    shadow      // parameter in an arithmetic function definition
 };
 
 class symbol_name {
@@ -130,10 +130,13 @@ struct symbol_info {
     //      local       index not needed
     //      common      index is the slot into the common block
     //      argument    index is the argument's position in the arg list
-    //                  (functions use argument 0 for return value)
-    //      subprogram  the number of arguments needed to call
+    //      retval      index not needed
+    //      subprogram  number of arguments needed to call or invoke
+    //      internal    number of arguments needed to invoke
     //      external    index not needed
-    //      label       a statement number used as a jump target
+    //      label       index not needed
+    //      format      index not needed
+    //      shadow      index not needed, but could be set like argument index
     //
     // `referenced` means the symbol is assigned to (other than initial data),
     // read from, called, invoked, or ref-passed.  For labels, it means it is

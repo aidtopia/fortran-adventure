@@ -45,9 +45,11 @@ unsigned core_size(symbol_info const &symbol) {
         case symbolkind::retval:
             return core_size(symbol.type) * array_size(symbol.shape);
 
+        case symbolkind::external:
+            return 1;  // Pointer to the subprogram is stored as word in core.
+
         case symbolkind::subprogram:
         case symbolkind::internal:
-        case symbolkind::external:
         case symbolkind::label:
             return 0;
 

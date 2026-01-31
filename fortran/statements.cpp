@@ -74,10 +74,14 @@ void call_statement::do_mark_reachable(unit &u, unsigned &t) {
 
 
 std::string indirect_call_statement::do_generate(unit const &) const {
-    return
-        std::format("(*(psub{})v{})({});",
-                    m_args.size(), m_name, format_arguments(m_args));
+    return std::format("(*(psub{})(void*)(*v{}))({});",
+                       m_args.size(), m_name, format_arguments(m_args));
 }
+
+void indirect_call_statement::do_mark_reachable(unit &u, unsigned &t) {
+    call_statement::do_mark_reachable(u, t);
+}
+
 
 std::string continue_statement::do_generate(unit const &) const { return ";"; }
 

@@ -47,6 +47,7 @@ class indirect_call_statement : public call_statement {
 
     private:
         std::string do_generate(unit const &u) const override;
+        void do_mark_reachable(unit &u, unsigned &t) override;
 };
 
 class continue_statement : public basic_statement {

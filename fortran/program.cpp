@@ -146,6 +146,15 @@ unsigned assign_addresses(program &prog) {
                 sub.update_symbol(std::move(local));
             }
         }
+        if (auto externals = sub.extract_symbols(is_referenced_external);
+            !externals.empty()
+        ) {
+            for (auto &external : externals) {
+                external.address = memsize;
+                memsize += core_size(external);
+                sub.update_symbol(std::move(external));
+            }
+        }
     }
     prog.set_core_requirement(memsize);
     return memsize;

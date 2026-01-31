@@ -152,12 +152,11 @@ expression_t external_node::do_clone(argument_map_t const &) const {
 }
 
 std::string external_node::do_generate_address() const {
-    return std::format("(word_t *){}", do_generate_value());
+    return std::format("v{}", m_name);
 }
 
 std::string external_node::do_generate_value() const {
-    // TODO:  Why assume sub?  Couldn't it be fn?
-    return std::format("sub{}", m_name);
+    return std::format("*{}", do_generate_address());
 }
 
 void external_node::do_mark_referenced(unit &u, unsigned &) {

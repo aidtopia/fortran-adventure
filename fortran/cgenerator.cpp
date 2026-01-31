@@ -268,16 +268,24 @@ std::string c_generator::generate_static_initialization() {
 
     auto result = std::string{};
     for (auto &var : m_initializers) {
-        auto const name = var.kind == symbolkind::common
+        auto const hint = var.kind == symbolkind::common
             ? std::format("{}:{}", var.comdat, var.name)
             : std::format("{}", var.name);
+
+        if (var.kind == symbolkind::external) {
+            result +=
+                std::format(" /*{}*/ core[{}] = (word_t)(void*)(&{});\n",
+                            hint, var.address, name(var));
+            continue;
+        }
+
         if (is_run(var.init_data)) {
             auto const value = var.init_data.front();
             if (value == 0) continue;
             result +=
                 std::format(
                     " /*{}*/ for (int i = 0; i < {}; ++i) core[{}+i] = {};",
-                    name, var.init_data.size(), var.address, value);
+                    hint, var.init_data.size(), var.address, value);
             if (looks_literal(value)) {
                 result += std::format(" /*'{}'*/", unpack_literal(value));
             }
@@ -299,7 +307,7 @@ std::string c_generator::generate_static_initialization() {
             auto const per_element = core_size(var.type);
             auto offset = 0u;
             for (auto i = 0u; i < elements && offset < size; ++i) {
-                result += std::format(" /*{}({})*/", name, i + i0);
+                result += std::format(" /*{}({})*/", hint, i + i0);
                 for (auto j = 0u; j < per_element && offset < size; ++j) {
                     auto const value = data[offset];
                     result += std::format(" core[{}] = {};",
@@ -318,7 +326,7 @@ std::string c_generator::generate_static_initialization() {
         auto const value = var.init_data.front();
         if (value == 0) continue;
         result += std::format(" /*{}*/ core[{}] = {};",
-                              name, var.address, var.init_data.front());
+                              hint, var.address, var.init_data.front());
         if (looks_literal(value)) {
             result += std::format(" /*'{}'*/", unpack_literal(value));
         }
@@ -333,11 +341,13 @@ std::string c_generator::generate_unit(unit const &u) {
     auto const dummies   = generate_dummies(u);
     auto const commons   = generate_common_variable_declarations(u);
     auto const locals    = generate_local_variable_declarations(u);
+    auto const externals = generate_external_declarations(u);
     auto const formats   = generate_format_specifications(u);
     auto const code      = generate_statements(u);
     return
-        std::format("\n{} {{\n{}{}{}{}{}{}}}\n",
-            signature, retval, dummies, commons, locals, formats, code);
+        std::format("\n{} {{\n{}{}{}{}{}{}{}}}\n",
+            signature, retval, dummies, commons, locals, externals, formats,
+            code);
 }
 
 std::string c_generator::generate_function_signature(unit const &u) {
@@ -409,7 +419,8 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
 std::string c_generator::generate_local_variable_declarations(unit const &u) {
     auto const locals = u.extract_symbols(is_referenced_local);
     if (locals.empty()) return {};
-    auto result = " // Local variables\n"s;
+    auto result = std::format(" // Local variable{}\n",
+                              locals.size() != 1 ? "s" : "");
     for (auto const &local : locals) {
         result += generate_variable_definition(local);
         add_initializer(local);
@@ -420,7 +431,8 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
 std::string c_generator::generate_format_specifications(unit const &u) {
     auto const labels = u.extract_symbols(is_referenced_format);
     if (labels.empty()) return {};
-    auto result = " // IO format specifications\n"s;
+    auto result = std::format(" // IO format specification{}\n",
+                              labels.size() != 1 ? "s" : "");
     for (auto const &label : labels) {
         if (!label.referenced) continue;
         auto const it = u.formats().find(label.name);
@@ -478,8 +490,22 @@ std::string c_generator::generate_scalar_definition(symbol_info const &var) {
     return result;
 }
 
+std::string c_generator::generate_external_declarations(unit const &u) {
+    auto const externals = u.extract_symbols(is_referenced_external);
+    if (externals.empty()) return {};
+    auto result = std::format(" // External subprogram{}\n",
+                              externals.size() != 1 ? "s" : "");
+    for (auto const &external : externals) {
+        result +=
+            std::format(" word_t *const v{} = &core[{}]; // ptr to {}\n",
+                        external.name, external.address, name(external));
+        add_initializer(external);
+    }
+    return result;
+}
+
 void c_generator::add_initializer(symbol_info const &var) {
-    if (var.init_data.empty()) return;
+    if (var.init_data.empty() && var.kind != symbolkind::external) return;
     m_initializers.push_back(var);
 }
 
