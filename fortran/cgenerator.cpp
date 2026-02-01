@@ -21,25 +21,6 @@ using namespace std::string_view_literals;
 namespace aid::fortran {
 
 namespace {
-    static std::string name(symbol_info const &sym) {
-        // sym.name is the identifier used in the Fortran code, which sometimes
-        // clashes with C or C++ identifiers (especially `NULL`), so we'll
-        // prefix it.
-        switch (sym.kind) {
-            case symbolkind::subprogram:
-                if (sym.type == datatype::none) {
-                    return std::format("sub{}", sym.name);
-                }
-                [[fallthrough]];
-            case symbolkind::internal:
-                return std::format("fn{}", sym.name);
-            case symbolkind::external:
-                return std::format("sub{}", sym.name);
-            default:
-                return std::format("v{}", sym.name);
-        }
-    }
-
     struct builtin_t {
         symbol_name name;
         std::string_view code;
@@ -281,9 +262,10 @@ std::string c_generator::generate_static_initialization(program const &prog) {
             : std::format("{}", var.name);
 
         if (var.kind == symbolkind::external) {
+            auto const prefix = var.type == datatype::none ? "sub" : "fn";
             result +=
-                std::format(" /*{}*/ core[{}] = (word_t)(void*)(&{});\n",
-                            hint, var.address, name(var));
+                std::format(" /*{}*/ core[{}] = (word_t)(void*)(&{}{});\n",
+                            hint, var.address, prefix, var.name);
             continue;
         }
 
@@ -373,7 +355,7 @@ std::string c_generator::generate_function_signature(unit const &u) {
     for (auto const &param : parameters) {
         if (is_return_value(param)) continue;
         if (param.index > 1) result += ", ";
-        result += std::format("addr_t {}", name(param));
+        result += std::format("addr_t v{}", param.name);
     }
     result += ')';
     return result;
@@ -403,7 +385,7 @@ std::string c_generator::generate_dummies(unit const &u) {
     auto result = std::string{};
     auto const dummies = u.extract_symbols(is_unreferenced_argument);
     for (auto const dummy : dummies) {
-        result += std::format(" (void){};  // unused argument\n", name(dummy));
+        result += std::format(" (void)v{};  // unused argument\n", dummy.name);
     }
     return result;
 }
@@ -455,7 +437,7 @@ std::string c_generator::generate_external_declarations(unit const &u) {
     for (auto const &external : externals) {
         result +=
             std::format(" const addr_t v{:<6} = &core[{:5}]; // = ptr to {}\n",
-                        external.name, external.address, name(external));
+                        external.name, external.address, external.name);
     }
     return result;
 }
@@ -510,8 +492,8 @@ std::string c_generator::generate_variable_definition(symbol_info const &var) {
         comment += std::format(" return value");
     }
     if (!comment.empty()) comment = " //"s + comment;
-    return std::format(" const addr_t {:<7} = &core[{:5}];{}\n",
-                       name(var), var.address, comment);
+    return std::format(" const addr_t v{:<6} = &core[{:5}];{}\n",
+                       var.name, var.address, comment);
 }
 
 constexpr std::string_view c_generator::external_dependencies() {
@@ -722,7 +704,7 @@ const char *io_readinteger(int width, const char *psrc, addr_t pvar) {
         return psrc;
 }
 
-char *io_writeinteger(int width, const addr_t pvar, char *pdst) {
+char *io_writeinteger(int width, const word_t *pvar, char *pdst) {
     uint64_t value = *pvar < 0 ? -*pvar : *pvar;
     if (width == 0) {
         width = 1;
