@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cctype>
 #include <format>
@@ -45,22 +46,22 @@ namespace {
     };
     static auto constexpr available_builtins = std::array<builtin_t, 8>{
         builtin_t{symbol_name{"IABS"},
-R"(word_t fnIABS(word_t *x) { return (*x < 0) ? -*x : *x; }
+R"(word_t fnIABS(addr_t x) { return (*x < 0) ? -*x : *x; }
 )"},
         builtin_t{symbol_name{"MIN0"},
-R"(word_t fnMIN0(word_t *a, word_t *b) { return (*a <= *b) ? *a : *b; }
+R"(word_t fnMIN0(addr_t a, addr_t b) { return (*a <= *b) ? *a : *b; }
 )"},
         builtin_t{symbol_name{"MAX0"},
-R"(word_t fnMAX0(word_t *a, word_t *b) { return (*a >= *b) ? *a : *b; }
+R"(word_t fnMAX0(addr_t a, addr_t b) { return (*a >= *b) ? *a : *b; }
 )"},
         builtin_t{symbol_name{"MOD"},
-R"(word_t fnMOD(word_t *a, word_t *b) { return *a % *b; }
+R"(word_t fnMOD(addr_t a, addr_t b) { return *a % *b; }
 )"},
 
         builtin_t{symbol_name{"DATE"},
 R"(
 // Returns the date as two `word_t`s of text, in the form 'dd-MMM-yy '.
-void subDATE(word_t r[2]) {
+void subDATE(addr_t r) {
     struct tm now; kron_time(&now);
     const int yy = kron_use_y2k() ? now.tm_year : now.tm_year % 100;
     r[0] = pack_A5((now.tm_mday < 10) ? ' ' : (char)('0' + (now.tm_mday / 10)),
@@ -81,7 +82,7 @@ R"(
 // Returns the time as text, in the form 'hh:mm'.  Both fields are two digits,
 // with a leading '0' if necessary.  The actual library function has an optional
 // second argument to receive seconds and tenths.
-void subTIME(word_t *r) {
+void subTIME(addr_t r) {
     struct tm now; kron_time(&now);
     r[0] = pack_A5((char)('0' + now.tm_hour / 10),
                    (char)('0' + now.tm_hour % 10),
@@ -96,7 +97,7 @@ R"(
 // The oldest versions of Adventure used IFILE rather than an OPEN statement.
 // The file name is a single A5-encoded word, so the file name is limited to
 // five characters and no extension.
-void subIFILE(word_t *unit, word_t *file) {
+void subIFILE(addr_t unit, addr_t file) {
     char buffer[6];
     for (int i = 0; i < 5; ++i) {
         char ch = (char)((*file >> (1 + 7*(4-i))) & 0x7F);
@@ -110,7 +111,7 @@ void subIFILE(word_t *unit, word_t *file) {
         builtin_t{symbol_name{"RAN"},
 R"(
 // Returns a random REAL value between 0.0 and 1.0 (inclusive).
-word_t fnRAN(word_t *state) {
+word_t fnRAN(addr_t state) {
     if (*state == 0) {
         *state = time(NULL);
         srand((unsigned int)(*state));
@@ -363,7 +364,7 @@ std::string c_generator::generate_function_signature(unit const &u) {
     for (auto const &param : parameters) {
         if (is_return_value(param)) continue;
         if (param.index > 1) result += ", ";
-        result += std::format("word_t *{}", name(param));
+        result += std::format("addr_t {}", name(param));
     }
     result += ')';
     return result;
@@ -377,7 +378,6 @@ std::string c_generator::generate_statements(unit const &u) {
             result += std::format(" {}\n", c_stmt);
         }
     }
-
     return result;
 }
 
@@ -386,7 +386,7 @@ std::string c_generator::generate_return_value(unit const &u) {
     if (retvals.empty()) return {};
     assert(retvals.size() == 1);
     assert(retvals.front().shape.empty());
-    return generate_scalar_definition(retvals.front());
+    return generate_variable_definition(retvals.front());
 }
 
 std::string c_generator::generate_dummies(unit const &u) {
@@ -394,7 +394,7 @@ std::string c_generator::generate_dummies(unit const &u) {
     auto result = std::string{};
     auto const dummies = u.extract_symbols(is_unreferenced_argument);
     for (auto const dummy : dummies) {
-        result += std::format(" (void) {};  // unused argument\n", name(dummy));
+        result += std::format(" (void){};  // unused argument\n", name(dummy));
     }
     return result;
 }
@@ -402,13 +402,8 @@ std::string c_generator::generate_dummies(unit const &u) {
 std::string c_generator::generate_common_variable_declarations(unit const &u) {
     auto const commons = u.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return {};
-    auto result = std::string{};
-    auto block = symbol_name{};
+    auto result = " // Common variables\n"s;
     for (auto const &common : commons) {
-        if (common.comdat != block) {
-            block = common.comdat;
-            result += std::format(" // Common block {}\n", block);
-        }
         if (common.referenced) {
             result += generate_variable_definition(common);
             add_initializer(common);
@@ -448,47 +443,36 @@ std::string c_generator::generate_format_specifications(unit const &u) {
 std::string c_generator::generate_variable_definition(
     symbol_info const &variable
 ) {
+    auto comment = std::string{};
     if (is_array(variable)) {
-        return generate_array_definition(variable);
-    } else {
-        return generate_scalar_definition(variable);
-    }
-}
-
-std::string c_generator::generate_array_definition(symbol_info const &var) {
-    auto result =
-        std::format(" word_t * const {} = &core[{}]; // [{}]",
-                    name(var), var.address, core_size(var));
-    if (!var.init_data.empty()) {
-        auto const &data = var.init_data;
-        if (data.size() <= 3) {
-            result += std::format(" = {{{}", data.front());
-            for (auto it = data.begin() + 1; it != data.end(); ++it) {
-                result += std::format(", {}", *it);
+        comment += std::format(" [{}]", core_size(variable));
+        if (!variable.init_data.empty()) {
+            auto const &data = variable.init_data;
+            if (data.size() <= 3) {
+                comment += std::format(" = {{{}", data.front());
+                for (auto it = data.begin() + 1; it != data.end(); ++it) {
+                    comment += std::format(", {}", *it);
+                }
+                comment += "}";
+            } else {
+                comment +=
+                    std::format(" = {{{}, {}, ..., {}}}",
+                        variable.init_data[0], variable.init_data[1],
+                        variable.init_data.back());
             }
-            result += "}";
-        } else {
-            result +=
-                std::format(" = {{{}, {}, ..., {}}}",
-                    var.init_data[0], var.init_data[1], var.init_data.back());
         }
+    } else if (!variable.init_data.empty()) {
+        comment += std::format(" = {}", variable.init_data[0]);
     }
-    result += '\n';
-    return result;
-}
-
-std::string c_generator::generate_scalar_definition(symbol_info const &var) {
-    auto result =
-        std::format(" word_t * const {} = &core[{}];",
-                    name(var), var.address);
-    if (!var.init_data.empty()) {
-        result += std::format(" // = {}", var.init_data[0]);
+    if (!variable.comdat.empty()) {
+        comment += std::format(" {}", variable.comdat);
     }
-    if (var.kind == symbolkind::retval) {
-        result += std::format(" // return value");
+    if (variable.kind == symbolkind::retval) {
+        comment += std::format(" return value");
     }
-    result += '\n';
-    return result;
+    if (!comment.empty()) comment = " //"s + comment;
+    return std::format(" const addr_t {:<7} = &core[{:5}];{}\n",
+                       name(variable), variable.address, comment);
 }
 
 std::string c_generator::generate_external_declarations(unit const &u) {
@@ -498,7 +482,7 @@ std::string c_generator::generate_external_declarations(unit const &u) {
                               externals.size() != 1 ? "s" : "");
     for (auto const &external : externals) {
         result +=
-            std::format(" word_t *const v{} = &core[{}]; // ptr to {}\n",
+            std::format(" const addr_t v{:<6} = &core[{:5}]; // = ptr to {}\n",
                         external.name, external.address, name(external));
         add_initializer(external);
     }
@@ -509,7 +493,9 @@ std::string c_generator::generate_subprogram_typedefs(unit const &u) {
     auto r = u.extract_subroutine_pointer_types();
     auto f = u.extract_function_pointer_types();
     if ((r|f) == 0) return {};
-    auto result = " // Function pointer types for indirect calls\n"s;
+    auto result =
+        std::format(" // Function pointer type{} for indirect calls\n",
+                    std::popcount(r) + std::popcount(f) != 1 ? "s" : "");
     auto args = std::string{};
     for (auto i = 0u; (r|f) != 0; r >>= 1, f >>= 1, ++i) {
         if (r & 1) {
@@ -519,7 +505,7 @@ std::string c_generator::generate_subprogram_typedefs(unit const &u) {
             result += std::format(" typedef word_t (*pfun{})({});\n", i, args);
         }
         if (!args.empty()) args += ", ";
-        args += "word_t *";
+        args += "addr_t";
     }
     return result;
 }
@@ -558,6 +544,7 @@ constexpr std::string_view c_generator::machine_definitions() {
     return R"(
 // Definitions for emulating the PDP-10 and its Fortran system.
 typedef int64_t word_t;
+typedef word_t *addr_t;
 
 // The PDP-10 LOGICAL uses the sign bit for truth.
 const word_t logical_true  = (word_t)-1;
@@ -614,8 +601,8 @@ struct iocontext {
     const char *pfmt;
     int repeat;
     int width;
-    const char *(*reader)(int, const char *, word_t *);
-    char *(*writer)(int, const word_t *, char *);
+    const char *(*reader)(int, const char *, addr_t);
+    char *(*writer)(int, addr_t, char *);
     bool upcase;
 } io;
 
@@ -705,7 +692,7 @@ void io_selectformat(const char *format) {
 
 int isdelimiter(int ch) { return ch == '\t' || ch == ','; }
 
-const char *io_readinteger(int width, const char *psrc, word_t *pvar) {
+const char *io_readinteger(int width, const char *psrc, addr_t pvar) {
     // If `width` is 0, the format string didn't specify a field width, so the
     // first non-valid character delimits the field.  Otherwise, the field is
     // exactly `width`.
@@ -736,7 +723,7 @@ const char *io_readinteger(int width, const char *psrc, word_t *pvar) {
         return psrc;
 }
 
-char *io_writeinteger(int width, const word_t *pvar, char *pdst) {
+char *io_writeinteger(int width, const addr_t pvar, char *pdst) {
     uint64_t value = *pvar < 0 ? -*pvar : *pvar;
     if (width == 0) {
         width = 1;
@@ -751,7 +738,7 @@ char *io_writeinteger(int width, const word_t *pvar, char *pdst) {
     return pfinal;
 }
 
-const char *io_readliteral(int width, const char *psrc, word_t *pvar) {
+const char *io_readliteral(int width, const char *psrc, addr_t pvar) {
     // We read all `width` characters even if that's more than five.
     word_t value = 0;
     int i;
@@ -772,7 +759,7 @@ const char *io_readliteral(int width, const char *psrc, word_t *pvar) {
     return psrc;
 }
 
-char *io_writeliteral(int width, const word_t *pvar, char *pdst) {
+char *io_writeliteral(int width, const addr_t pvar, char *pdst) {
     const int shift = 29;
     const word_t mask = (word_t)0x7F << shift;
     word_t x = *pvar;
@@ -787,7 +774,7 @@ char *io_writeliteral(int width, const word_t *pvar, char *pdst) {
     return pdst;
 }
 
-const char *io_readlogical(int width, const char *psrc, word_t *pvar) {
+const char *io_readlogical(int width, const char *psrc, addr_t pvar) {
     word_t value = logical_false;
     while (width-- > 0 && isspace(*psrc)) ++psrc;
     if (width-- > 0 && *psrc != '\0') {
@@ -805,7 +792,7 @@ char *io_writelogical(int width, word_t const *pvar, char *pdst) {
     return pdst;
 }
 
-void io_input(word_t *pvar) {
+void io_input(addr_t pvar) {
     if (io.repeat == 0) {
         io.repeat = 1;
         if ('1' <= *io.pfmt && *io.pfmt <= '9') {
@@ -867,7 +854,7 @@ void io_scanfmt(word_t unit) {
     }
 }
 
-void io_output(word_t unit, word_t *pvar) {
+void io_output(word_t unit, addr_t pvar) {
     if (io.repeat == 0) {
         while (io.repeat == 0) {
             switch (*io.pfmt) {
