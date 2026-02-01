@@ -92,7 +92,7 @@ void mark_reachable(program &prog) {
 }
 
 unsigned assign_addresses(program &prog) {
-    auto memsize = 0u;
+    auto memsize = 1u;  // first slot reserved like NULL
     auto const comdat_sizes = common_block_sizes(prog);
     auto comdat_bases = std::map<symbol_name, unsigned>{};
     for (auto const &[block, size] : comdat_sizes) {

@@ -67,7 +67,7 @@ class value_expression_node : public expression_node {
 class address_expression_node : public expression_node {
     private:
         std::string do_generate_value() const override {
-            return std::format("*{}", generate_address());
+            return std::format("core[{}]", generate_address());
         }
 };
 

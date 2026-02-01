@@ -118,7 +118,7 @@ expression_t temp_variable_node::do_clone(argument_map_t const &args) const {
 }
 
 std::string temp_variable_node::do_generate_address() const {
-    return std::format("((*v{0} = {1}), v{0})",
+    return std::format("((core[v{0}] = {1}), v{0})",
                        name(), m_expr->generate_value());
 }
 
@@ -147,11 +147,6 @@ std::string external_node::do_generate_address() const {
     return std::format("v{}", m_name);
 }
 
-std::string external_node::do_generate_value() const {
-    assert(false && "external_node can produce only addresses");
-    return std::format("*v{}", m_name);
-}
-
 void external_node::do_mark_referenced(unit &u, unsigned &) {
     u.mark_symbol_referenced(m_name);
 }
@@ -163,7 +158,8 @@ expression_t array_index_node::do_clone(argument_map_t const &args) const {
 }
 
 std::string array_index_node::do_generate_address() const {
-    return std::format("(v{} + {})", m_array, m_index_expr->generate_value());
+    return std::format("(v{} + (addr_t){})",
+                       m_array, m_index_expr->generate_value());
 }
 
 void array_index_node::do_mark_referenced(unit &u, unsigned &t) {

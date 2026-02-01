@@ -52,7 +52,7 @@ namespace {
 
 std::string assignment_statement::do_generate(unit const &) const {
     return std::format(
-        "*{} = {};",
+        "core[{}] = {};",
         m_lvalue->generate_address(), m_rhs->generate_value());
 }
 
@@ -75,7 +75,7 @@ void call_statement::do_mark_reachable(unit &u, unsigned &t) {
 
 
 std::string indirect_call_statement::do_generate(unit const &) const {
-    return std::format("(*(psub{})(void*)(*v{}))({});",
+    return std::format("(*(psub{})(void*)(core[v{}]))({});",
                        m_args.size(), m_name, format_arguments(m_args));
 }
 
@@ -104,10 +104,10 @@ std::string do_statement::do_generate(unit const &u) const {
         "  const word_t limit{0} = {2};\n"
         "  const word_t step{0} = {3};\n"
         "  const word_t dir{0} = sign(step{0});\n"
-        "  *v{0} = {1};\n"
+        "  core[v{0}] = {1};\n"
         "  do {{\n{4}"
-        "   *v{0} += step{0};\n"
-        "  }} while (dir{0}*(*v{0} - limit{0}) <= 0);\n"
+        "   core[v{0}] += step{0};\n"
+        "  }} while (dir{0}*(core[v{0}] - limit{0}) <= 0);\n"
         " }}",
         m_index_control.index,
         m_index_control.init->generate_value(),
@@ -233,9 +233,9 @@ std::string read_statement::do_generate(unit const &u) const {
             auto const array_expr =
                 array_index_node{item.variable, symbol.shape, item.indices};
             input_item = std::format(
-                "  for (*v{0} = {1}; "
-                       "in_range(*v{0}, {1}, {2}); "
-                       "*v{0} += {3}) {{\n"
+                "  for (core[v{0}] = {1}; "
+                       "in_range(core[v{0}], {1}, {2}); "
+                       "core[v{0}] += {3}) {{\n"
                 "   io_input({4});\n"
                 "  }}\n",
                 item.index_control.index,
@@ -258,7 +258,8 @@ void read_statement::do_mark_reachable(unit &u, unsigned &t) {
 
 
 std::string return_statement::do_generate(unit const &) const {
-    return m_retval.empty() ? "return;" : std::format("return *v{};", m_retval);
+    return m_retval.empty() ? "return;"
+                            : std::format("return core[v{}];", m_retval);
 }
 
 void return_statement::do_mark_reachable(unit &u, unsigned &) {
@@ -295,9 +296,9 @@ std::string type_statement::do_generate(unit const &u) const {
             auto const array_expr =
                 array_index_node{item.variable, symbol.shape, item.indices};
             output_item = std::format(
-                "  for (*v{0} = {1}; "
-                       "in_range(*v{0}, {1}, {2}); "
-                        "*v{0} += {3}) {{\n"
+                "  for (core[v{0}] = {1}; "
+                       "in_range(core[v{0}], {1}, {2}); "
+                        "core[v{0}] += {3}) {{\n"
                 "   io_output(0, {4});\n"
                 "  }}\n",
                 item.index_control.index,
@@ -308,7 +309,7 @@ std::string type_statement::do_generate(unit const &u) const {
         }
         outputs.append(output_item);
     }
-    outputs.append("  io_output(0, NULL);\n");
+    outputs.append("  io_output(0, 0);\n");
 
     return std::format("{{\n{}{} }}", preamble, outputs);
 }

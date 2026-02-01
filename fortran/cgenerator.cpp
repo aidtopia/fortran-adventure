@@ -27,16 +27,16 @@ namespace {
     };
     static auto constexpr available_builtins = std::array<builtin_t, 8>{
         builtin_t{symbol_name{"IABS"},
-R"(word_t fnIABS(addr_t x) { return (*x < 0) ? -*x : *x; }
+R"(word_t fnIABS(addr_t x) { return (core[x] < 0) ? -core[x] : core[x]; }
 )"},
         builtin_t{symbol_name{"MIN0"},
-R"(word_t fnMIN0(addr_t a, addr_t b) { return (*a <= *b) ? *a : *b; }
+R"(word_t fnMIN0(addr_t a, addr_t b) { return (core[a] <= core[b]) ? core[a] : core[b]; }
 )"},
         builtin_t{symbol_name{"MAX0"},
-R"(word_t fnMAX0(addr_t a, addr_t b) { return (*a >= *b) ? *a : *b; }
+R"(word_t fnMAX0(addr_t a, addr_t b) { return (core[a] >= core[b]) ? core[a] : core[b]; }
 )"},
         builtin_t{symbol_name{"MOD"},
-R"(word_t fnMOD(addr_t a, addr_t b) { return *a % *b; }
+R"(word_t fnMOD(addr_t a, addr_t b) { return core[a] % core[b]; }
 )"},
 
         builtin_t{symbol_name{"DATE"},
@@ -45,16 +45,18 @@ R"(
 void subDATE(addr_t r) {
     struct tm now; kron_time(&now);
     const int yy = kron_use_y2k() ? now.tm_year : now.tm_year % 100;
-    r[0] = pack_A5((now.tm_mday < 10) ? ' ' : (char)('0' + (now.tm_mday / 10)),
-                   (char)('0' + now.tm_mday % 10),
-                   '-',
-                   kron_mmm[now.tm_mon * 3 + 0],
-                   kron_mmm[now.tm_mon * 3 + 1]);
-    r[1] = pack_A5(kron_mmm[now.tm_mon * 3 + 2],
-                   '-',
-                   (char)('0' + yy / 10), // produces non-digit after 1999
-                   (char)('0' + yy % 10),
-                   ' ');
+    core[r+0] =
+        pack_A5((now.tm_mday < 10) ? ' ' : (char)('0' + (now.tm_mday / 10)),
+                (char)('0' + now.tm_mday % 10),
+                '-',
+                kron_mmm[now.tm_mon * 3 + 0],
+                kron_mmm[now.tm_mon * 3 + 1]);
+    core[r+1] =
+        pack_A5(kron_mmm[now.tm_mon * 3 + 2],
+                '-',
+                (char)('0' + yy / 10), // produces non-digit after 1999
+                (char)('0' + yy % 10),
+                ' ');
 }
 )"},
 
@@ -65,11 +67,11 @@ R"(
 // second argument to receive seconds and tenths.
 void subTIME(addr_t r) {
     struct tm now; kron_time(&now);
-    r[0] = pack_A5((char)('0' + now.tm_hour / 10),
-                   (char)('0' + now.tm_hour % 10),
-                   ':',
-                   (char)('0' + now.tm_min / 10),
-                   (char)('0' + now.tm_min % 10));
+    core[r] = pack_A5((char)('0' + now.tm_hour / 10),
+                      (char)('0' + now.tm_hour % 10),
+                      ':',
+                      (char)('0' + now.tm_min / 10),
+                      (char)('0' + now.tm_min % 10));
 }
 )"},
 
@@ -81,11 +83,11 @@ R"(
 void subIFILE(addr_t unit, addr_t file) {
     char buffer[6];
     for (int i = 0; i < 5; ++i) {
-        char ch = (char)((*file >> (1 + 7*(4-i))) & 0x7F);
+        char ch = (char)((core[file] >> (1 + 7*(4-i))) & 0x7F);
         buffer[i] = ch == ' ' ? '\0' : ch;
     }
     buffer[5] = '\0';
-    io_open(*unit, buffer);
+    io_open(core[unit], buffer);
 }
 )"},
 
@@ -93,9 +95,9 @@ void subIFILE(addr_t unit, addr_t file) {
 R"(
 // Returns a random REAL value between 0.0 and 1.0 (inclusive).
 word_t fnRAN(addr_t state) {
-    if (*state == 0) {
-        *state = time(NULL);
-        srand((unsigned int)(*state));
+    if (core[state] == 0) {
+        core[state] = time(NULL);
+        srand((unsigned int)(core[state]));
     }
     const float r = 1.0f * rand() / RAND_MAX;
     return ( ( (word_t)(*(uint32_t*)(&r)) ) << 32 ) >> 32;
@@ -255,13 +257,18 @@ std::string c_generator::generate_static_initialization(program const &prog) {
         return true;
     };
 
-    auto result = std::string{};
+    auto result = "\nvoid initialize_static_data() {\n"s;
+    bool asserted_pointers_fit_in_words = false;
     for (auto &var : to_init) {
         auto const hint = var.kind == symbolkind::common
             ? std::format("{}:{}", var.comdat, var.name)
             : std::format("{}", var.name);
 
         if (var.kind == symbolkind::external) {
+            if (!asserted_pointers_fit_in_words) {
+                result += " assert(sizeof(word_t) >= sizeof(void*));\n";
+                asserted_pointers_fit_in_words = true;
+            }
             auto const prefix = var.type == datatype::none ? "sub" : "fn";
             result +=
                 std::format(" /*{}*/ core[{}] = (word_t)(void*)(&{}{});\n",
@@ -269,20 +276,26 @@ std::string c_generator::generate_static_initialization(program const &prog) {
             continue;
         }
 
-        if (is_run(var.init_data)) {
-            auto const value = var.init_data.front();
+        auto const &data = var.init_data;
+        if (is_run(data)) {
+            auto const value = data.front();
             if (value == 0) continue;
+            auto const size = std::min(core_size(var),
+                                       static_cast<unsigned>(data.size()));
             result +=
                 std::format(
                     " /*{}*/ for (int i = 0; i < {}; ++i) core[{}+i] = {};",
-                    hint, var.init_data.size(), var.address, value);
+                    hint, size, var.address, value);
             if (looks_literal(value)) {
-                result += std::format(" /*'{}'*/", unpack_literal(value));
+                result += std::format(" // '{}'", unpack_literal(value));
+            } else if (var.type == datatype::LOGICAL) {
+                if (value == -1) result += " // .TRUE.";
+                else if (value == 0) result += " // .FALSE.";
             }
             result += '\n';
             continue;
         }
-        if (var.init_data.size() > 1) {
+        if (data.size() > 1) {
             // TODO:  Fix this hack.
             // * Doesn't handle more than 1 dimension.
             // * Anticipates but doesn't fully support more than one
@@ -290,10 +303,8 @@ std::string c_generator::generate_static_initialization(program const &prog) {
             // * Unnecessarily initializes elements containing 0, because
             //   skipping screws up the offsets and creates weird looking
             //   output.
-            auto const &data = var.init_data;
-            auto const size =
-                std::min(core_size(var),
-                         static_cast<unsigned>(data.size()));
+            auto const size = std::min(core_size(var),
+                                       static_cast<unsigned>(data.size()));
             auto const elements = array_size(var.shape);
             auto const i0 = var.shape[0].minimum;
             auto const per_element = core_size(var.type);
@@ -306,7 +317,10 @@ std::string c_generator::generate_static_initialization(program const &prog) {
                                           var.address+offset, value);
                     if (looks_literal(value)) {
                         result +=
-                            std::format(" /*'{}'*/", unpack_literal(value));
+                            std::format(" // '{}'", unpack_literal(value));
+                    } else if (var.type == datatype::LOGICAL) {
+                        if (value == -1) result += " // .TRUE.";
+                        else if (value == 0) result += " // .FALSE.";
                     }
                     offset += 1;
                 }
@@ -314,17 +328,21 @@ std::string c_generator::generate_static_initialization(program const &prog) {
             }
             continue;
         }
-        assert(var.init_data.size() == 1);
-        auto const value = var.init_data.front();
+        assert(data.size() == 1);
+        auto const value = data.front();
         if (value == 0) continue;
         result += std::format(" /*{}*/ core[{}] = {};",
-                              hint, var.address, var.init_data.front());
+                              hint, var.address, value);
         if (looks_literal(value)) {
-            result += std::format(" /*'{}'*/", unpack_literal(value));
+            result += std::format(" // '{}'", unpack_literal(value));
+        } else if (var.type == datatype::LOGICAL) {
+            if (value == -1) result += " // .TRUE.";
+            else if (value == 0) result += " // .FALSE.";
         }
         result += '\n';
     }
-    return std::format("\nvoid initialize_static_data() {{\n{}}}\n", result);
+    result += "}\n";
+    return result;
 }
 
 std::string c_generator::generate_unit(unit const &u) {
@@ -436,7 +454,7 @@ std::string c_generator::generate_external_declarations(unit const &u) {
                               externals.size() != 1 ? "s" : "");
     for (auto const &external : externals) {
         result +=
-            std::format(" const addr_t v{:<6} = &core[{:5}]; // = ptr to {}\n",
+            std::format(" const addr_t v{:<6} = {:5}; // = ptr to {}\n",
                         external.name, external.address, external.name);
     }
     return result;
@@ -492,7 +510,7 @@ std::string c_generator::generate_variable_definition(symbol_info const &var) {
         comment += std::format(" return value");
     }
     if (!comment.empty()) comment = " //"s + comment;
-    return std::format(" const addr_t v{:<6} = &core[{:5}];{}\n",
+    return std::format(" const addr_t v{:<6} = {:5};{}\n",
                        var.name, var.address, comment);
 }
 
@@ -518,6 +536,10 @@ constexpr std::string_view c_generator::external_dependencies() {
 #else
 #define NORETURN /*noreturn*/
 #endif
+
+#ifdef _MSC_VER
+#pragma warning(disable:4709, justification:"intentional pattern: `core[((i=x),i)]`")
+#endif
 )";
 }
 
@@ -525,7 +547,7 @@ constexpr std::string_view c_generator::machine_definitions() {
     return R"(
 // Definitions for emulating the PDP-10 and its Fortran system.
 typedef int64_t word_t;
-typedef word_t *addr_t;
+typedef unsigned addr_t;
 
 // The PDP-10 LOGICAL uses the sign bit for truth.
 const word_t logical_true  = (word_t)-1;
@@ -673,7 +695,7 @@ void io_selectformat(const char *format) {
 
 int isdelimiter(int ch) { return ch == '\t' || ch == ','; }
 
-const char *io_readinteger(int width, const char *psrc, addr_t pvar) {
+const char *io_readinteger(int width, const char *psrc, addr_t var) {
     // If `width` is 0, the format string didn't specify a field width, so the
     // first non-valid character delimits the field.  Otherwise, the field is
     // exactly `width`.
@@ -700,26 +722,26 @@ const char *io_readinteger(int width, const char *psrc, addr_t pvar) {
         if (psrc - begin == width) goto done;
         ++psrc; goto extra;
     done:
-        *pvar = sign * value;
+        core[var] = sign * value;
         return psrc;
 }
 
-char *io_writeinteger(int width, const word_t *pvar, char *pdst) {
-    uint64_t value = *pvar < 0 ? -*pvar : *pvar;
+char *io_writeinteger(int width, addr_t var, char *pdst) {
+    uint64_t value = core[var] < 0 ? -core[var] : core[var];
     if (width == 0) {
         width = 1;
-        if (*pvar < 0) width += 1;
+        if (core[var] < 0) width += 1;
         for (uint64_t x = value; x >= 10; x /= 10) width += 1;
     }
     char *pfinal = pdst + width;
-                                     pdst[--width] = '0' + value % 10; value /= 10;
-    while (value > 0 && width > 0) { pdst[--width] = '0' + value % 10; value /= 10; }
-    if (*pvar < 0 && width > 0)    { pdst[--width] = '-'; }
-    while (width > 0)              { pdst[--width] = ' '; }
+                                      pdst[--width] = '0' + value % 10; value /= 10;
+    while (value > 0 && width > 0)  { pdst[--width] = '0' + value % 10; value /= 10; }
+    if (core[var] < 0 && width > 0) { pdst[--width] = '-'; }
+    while (width > 0)               { pdst[--width] = ' '; }
     return pfinal;
 }
 
-const char *io_readliteral(int width, const char *psrc, addr_t pvar) {
+const char *io_readliteral(int width, const char *psrc, addr_t var) {
     // We read all `width` characters even if that's more than five.
     word_t value = 0;
     int i;
@@ -736,14 +758,14 @@ const char *io_readliteral(int width, const char *psrc, addr_t pvar) {
     // wider than the 36-bit machine word being emulated.
     value <<= (1 + 64 - 36);
     value >>= (64 - 36);
-    *pvar = value;
+    core[var] = value;
     return psrc;
 }
 
-char *io_writeliteral(int width, const addr_t pvar, char *pdst) {
+char *io_writeliteral(int width, addr_t var, char *pdst) {
     const int shift = 29;
     const word_t mask = (word_t)0x7F << shift;
-    word_t x = *pvar;
+    word_t x = core[var];
     const int count = width < 5 ? width : 5;
     int i;
     for (i = 0; i < count; ++i) {
@@ -755,7 +777,7 @@ char *io_writeliteral(int width, const addr_t pvar, char *pdst) {
     return pdst;
 }
 
-const char *io_readlogical(int width, const char *psrc, addr_t pvar) {
+const char *io_readlogical(int width, const char *psrc, addr_t var) {
     word_t value = logical_false;
     while (width-- > 0 && isspace(*psrc)) ++psrc;
     if (width-- > 0 && *psrc != '\0') {
@@ -763,17 +785,17 @@ const char *io_readlogical(int width, const char *psrc, addr_t pvar) {
         else if (*psrc == 'F' || *psrc == 'f') { ++psrc; }
     }
     while (width-- > 0 && *psrc != '\0') ++psrc;
-    *pvar = value;
+    core[var] = value;
     return psrc;
 }
 
-char *io_writelogical(int width, word_t const *pvar, char *pdst) {
+char *io_writelogical(int width, addr_t var, char *pdst) {
     while (width-- > 1) { *pdst++ = ' '; }
-    *pdst++ = *pvar < 0 ? 'T' : 'F';
+    *pdst++ = core[var] < 0 ? 'T' : 'F';
     return pdst;
 }
 
-void io_input(addr_t pvar) {
+void io_input(addr_t var) {
     if (io.repeat == 0) {
         io.repeat = 1;
         if ('1' <= *io.pfmt && *io.pfmt <= '9') {
@@ -801,7 +823,7 @@ void io_input(addr_t pvar) {
     }
     if (io.repeat > 0) {
         io.repeat -= 1;
-        if (io.reader != NULL) io.psrc = (*io.reader)(io.width, io.psrc, pvar);
+        if (io.reader != NULL) io.psrc = (*io.reader)(io.width, io.psrc, var);
     }
 }
 
@@ -835,7 +857,7 @@ void io_scanfmt(word_t unit) {
     }
 }
 
-void io_output(word_t unit, addr_t pvar) {
+void io_output(word_t unit, addr_t var) {
     if (io.repeat == 0) {
         while (io.repeat == 0) {
             switch (*io.pfmt) {
@@ -886,8 +908,8 @@ void io_output(word_t unit, addr_t pvar) {
         assert(io.repeat > 0);
         assert(io.writer != NULL);
     }
-    if (pvar == NULL) { io_storerecord(unit); return; }
-    io.pdst = (*io.writer)(io.width, pvar, io.pdst);
+    if (var == 0) { io_storerecord(unit); return; }
+    io.pdst = (*io.writer)(io.width, var, io.pdst);
     *io.pdst = '\0';
     --io.repeat;
 }
@@ -1180,8 +1202,7 @@ constexpr std::string_view c_generator::usage_function() {
 void usage() {
     printf(
         "\nOptions:\n\n"
-        "-CAPS            Capitalize all letters in the keyboard input\n"
-        "                 handler. Disabled by default.\n\n"
+        "-CAPS            Capitalize all keyboard input.\n\n"
         "-l<file>         Load a core-image file into program memory during\n"
         "                 initialization.\n\n"
         "-d<date>         Force DATE to return the specified date. Allows\n"

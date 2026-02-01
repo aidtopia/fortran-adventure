@@ -90,7 +90,6 @@ class external_node : public address_expression_node {
     private:
         expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
-        std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
         symbol_name m_name;
