@@ -16,8 +16,6 @@ class c_generator {
     public:
         static std::string generate_c(program const &prog);
 
-        c_generator() : m_initializers{} {}
-
     private:
         std::string generate_program(program const &prog);
         std::string generate_core_memory(program const &prog);
@@ -25,7 +23,7 @@ class c_generator {
         std::string generate_prototypes(program const &prog);
         std::string generate_main_function(program const &prog);
         std::string generate_subprograms(program const &prog);
-        std::string generate_static_initialization();
+        std::string generate_static_initialization(program const &prog);
 
         std::string generate_unit(unit const &u);
         std::string generate_function_signature(unit const &u);
@@ -35,12 +33,10 @@ class c_generator {
         std::string generate_common_variable_declarations(unit const &u);
         std::string generate_local_variable_declarations(unit const &u);
         std::string generate_format_specifications(unit const &u);
-
-        std::string generate_variable_definition(symbol_info const &var);
         std::string generate_external_declarations(unit const &u);
         std::string generate_subprogram_typedefs(unit const &u);
 
-        void add_initializer(symbol_info const &symbol);
+        std::string generate_variable_definition(symbol_info const &var);
 
         // The runtime support consists of static text.
         static constexpr std::string_view external_dependencies();
@@ -49,11 +45,6 @@ class c_generator {
         static constexpr std::string_view kron_subsystem();
         static constexpr std::string_view host_subsystem();
         static constexpr std::string_view usage_function();
-
-        // Static initialization cannot be done where the variables are defined,
-        // so save them until generate_static_initialization creates a function
-        // called at startup.
-        std::vector<symbol_info> m_initializers;
 };
 
 }

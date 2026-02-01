@@ -129,25 +129,23 @@ std::string c_generator::generate_c(program const &prog) {
 }
 
 std::string c_generator::generate_program(program const &prog) {
-    m_initializers.clear();
-    // Argument evaluation order in C is not specified, so we generate each
-    // portion first and then use std::format to concatenate it all together.
-    auto const core_memory   = generate_core_memory(prog);
-    auto const builtins      = generate_builtins(prog);
-    auto const prototypes    = generate_prototypes(prog);
-    auto const subprograms   = generate_subprograms(prog);
-    auto const init_function = generate_static_initialization();
-    auto const main_function = generate_main_function(prog);
-
+    // Argument evaluation order in C is not specified, but the program is
+    // locked at this point, so it doesn't matter.
     return std::format(
+        "{}{}"
+        "{}"
         "{}{}{}"
-        "{}{}{}{}"
-        "{}{}{}"
+        "{}"
+        "{}{}"
+        "{}"
         "{}{}",
-        external_dependencies(), machine_definitions(), core_memory,
-        host_subsystem(), io_subsystem(), kron_subsystem(), builtins,
-        prototypes, subprograms, init_function,
-        usage_function(), main_function);
+        external_dependencies(), machine_definitions(),
+        generate_core_memory(prog),
+        host_subsystem(), io_subsystem(), kron_subsystem(),
+        generate_builtins(prog),
+        generate_prototypes(prog), generate_subprograms(prog),
+        generate_static_initialization(prog),
+        usage_function(), generate_main_function(prog));
 }
 
 std::string c_generator::generate_core_memory(program const &prog) {
@@ -256,10 +254,19 @@ std::string c_generator::generate_subprograms(program const &prog) {
     return result;
 }
 
-std::string c_generator::generate_static_initialization() {
-    // Given that address assignment and code generation likely happen in the
-    // same order, these are probably already in order.  But just in case...
-    std::sort(m_initializers.begin(), m_initializers.end(), by_address);
+std::string c_generator::generate_static_initialization(program const &prog) {
+    auto to_init = std::vector<symbol_info>{};
+    for (auto const &sub : prog) {
+        auto const needs_static_init = [] (symbol_info const &s) {
+            return s.referenced &&
+                   (!s.init_data.empty() || s.kind == symbolkind::external);
+        };
+        to_init.append_range(sub.extract_symbols(needs_static_init));
+    }
+    // Given how address assignment proceeds, it's likely this sort is
+    // unnecessary.  But if address assigned changes in the future, it'd be
+    // nice to have the initializers sorted.
+    std::sort(to_init.begin(), to_init.end(), by_address);
 
     auto const is_run = [] (auto data) -> bool {
         if (data.size() <= 3) return false;
@@ -268,7 +275,7 @@ std::string c_generator::generate_static_initialization() {
     };
 
     auto result = std::string{};
-    for (auto &var : m_initializers) {
+    for (auto &var : to_init) {
         auto const hint = var.kind == symbolkind::common
             ? std::format("{}:{}", var.comdat, var.name)
             : std::format("{}", var.name);
@@ -302,7 +309,9 @@ std::string c_generator::generate_static_initialization() {
             //   skipping screws up the offsets and creates weird looking
             //   output.
             auto const &data = var.init_data;
-            auto const size = core_size(var);
+            auto const size =
+                std::min(core_size(var),
+                         static_cast<unsigned>(data.size()));
             auto const elements = array_size(var.shape);
             auto const i0 = var.shape[0].minimum;
             auto const per_element = core_size(var.type);
@@ -406,7 +415,6 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
     for (auto const &common : commons) {
         if (common.referenced) {
             result += generate_variable_definition(common);
-            add_initializer(common);
         }
     }
     return result;
@@ -419,7 +427,6 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
                               locals.size() != 1 ? "s" : "");
     for (auto const &local : locals) {
         result += generate_variable_definition(local);
-        add_initializer(local);
     }
     return result;
 }
@@ -440,41 +447,6 @@ std::string c_generator::generate_format_specifications(unit const &u) {
     return result;
 }
 
-std::string c_generator::generate_variable_definition(
-    symbol_info const &variable
-) {
-    auto comment = std::string{};
-    if (is_array(variable)) {
-        comment += std::format(" [{}]", core_size(variable));
-        if (!variable.init_data.empty()) {
-            auto const &data = variable.init_data;
-            if (data.size() <= 3) {
-                comment += std::format(" = {{{}", data.front());
-                for (auto it = data.begin() + 1; it != data.end(); ++it) {
-                    comment += std::format(", {}", *it);
-                }
-                comment += "}";
-            } else {
-                comment +=
-                    std::format(" = {{{}, {}, ..., {}}}",
-                        variable.init_data[0], variable.init_data[1],
-                        variable.init_data.back());
-            }
-        }
-    } else if (!variable.init_data.empty()) {
-        comment += std::format(" = {}", variable.init_data[0]);
-    }
-    if (!variable.comdat.empty()) {
-        comment += std::format(" {}", variable.comdat);
-    }
-    if (variable.kind == symbolkind::retval) {
-        comment += std::format(" return value");
-    }
-    if (!comment.empty()) comment = " //"s + comment;
-    return std::format(" const addr_t {:<7} = &core[{:5}];{}\n",
-                       name(variable), variable.address, comment);
-}
-
 std::string c_generator::generate_external_declarations(unit const &u) {
     auto const externals = u.extract_symbols(is_referenced_external);
     if (externals.empty()) return {};
@@ -484,7 +456,6 @@ std::string c_generator::generate_external_declarations(unit const &u) {
         result +=
             std::format(" const addr_t v{:<6} = &core[{:5}]; // = ptr to {}\n",
                         external.name, external.address, name(external));
-        add_initializer(external);
     }
     return result;
 }
@@ -510,9 +481,37 @@ std::string c_generator::generate_subprogram_typedefs(unit const &u) {
     return result;
 }
 
-void c_generator::add_initializer(symbol_info const &var) {
-    if (var.init_data.empty() && var.kind != symbolkind::external) return;
-    m_initializers.push_back(var);
+std::string c_generator::generate_variable_definition(symbol_info const &var) {
+    auto comment = std::string{};
+    if (is_array(var)) {
+        comment += std::format(" [{}]", core_size(var));
+        if (!var.init_data.empty()) {
+            auto const &data = var.init_data;
+            if (data.size() <= 3) {
+                comment += std::format(" = {{{}", data.front());
+                for (auto it = data.begin() + 1; it != data.end(); ++it) {
+                    comment += std::format(", {}", *it);
+                }
+                comment += "}";
+            } else {
+                comment +=
+                    std::format(" = {{{}, {}, ..., {}}}",
+                        var.init_data[0], var.init_data[1],
+                        var.init_data.back());
+            }
+        }
+    } else if (!var.init_data.empty()) {
+        comment += std::format(" = {}", var.init_data[0]);
+    }
+    if (!var.comdat.empty()) {
+        comment += std::format(" {}", var.comdat);
+    }
+    if (var.kind == symbolkind::retval) {
+        comment += std::format(" return value");
+    }
+    if (!comment.empty()) comment = " //"s + comment;
+    return std::format(" const addr_t {:<7} = &core[{:5}];{}\n",
+                       name(var), var.address, comment);
 }
 
 constexpr std::string_view c_generator::external_dependencies() {
