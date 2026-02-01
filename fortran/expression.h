@@ -51,15 +51,26 @@ class expression_node {
 
     private:
         virtual expression_t do_clone(argument_map_t const &args) const = 0;
-        virtual std::string do_generate_address() const {
-            assert(false &&
-                   "temp_variable_node should have eliminated the need for a"
-                   "default implementation of do_generate_address");
-            return "BUG BUG BUG";
-        }
+        virtual std::string do_generate_address() const = 0;
         virtual std::string do_generate_value() const = 0;
         virtual void do_mark_referenced(unit &, unsigned &) {};
 };
+
+class value_expression_node : public expression_node {
+    private:
+        std::string do_generate_address() const override {
+            assert(false && "wrap with a temp_variable_node");
+            return "BUG BUG BUG";
+        }
+};
+
+class address_expression_node : public expression_node {
+    private:
+        std::string do_generate_value() const override {
+            return std::format("*{}", generate_address());
+        }
+};
+
 
 }
 

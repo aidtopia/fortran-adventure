@@ -105,6 +105,7 @@ unsigned assign_addresses(program &prog) {
     // variables are not allocated on a stack.  All variables in the program
     // have static storage.
     for (auto &sub : prog) {
+        if (!sub.is_reachable()) continue;
         if (auto retvals = sub.extract_symbols(is_return_value);
             !retvals.empty()
         ) {

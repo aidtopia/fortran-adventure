@@ -17,7 +17,7 @@ namespace aid::fortran {
 using argument_list_t = std::vector<expression_t>;
 using subscript_list_t = std::vector<expression_t>;
 
-class unary_node : public expression_node {
+class unary_node : public value_expression_node {
     public:
         unary_node(operator_t op, expression_t node) : m_op(op), m_node(node) {}
 
@@ -30,7 +30,7 @@ class unary_node : public expression_node {
         expression_t m_node;
 };
 
-class binary_node : public expression_node {
+class binary_node : public value_expression_node {
     public:
         binary_node(expression_t lhs, operator_t op, expression_t rhs) :
             m_lhs(lhs), m_op(op), m_rhs(rhs) {}
@@ -45,7 +45,7 @@ class binary_node : public expression_node {
         expression_t m_rhs;
 };
 
-class constant_node : public expression_node {
+class constant_node : public value_expression_node {
     public:
         constant_node(machine_word_t constant) : m_constant(constant) {}
 
@@ -56,27 +56,25 @@ class constant_node : public expression_node {
         machine_word_t m_constant;
 };
 
-class variable_node : public expression_node {
+class variable_node : public address_expression_node {
     public:
         variable_node(symbol_name const &name) : m_name(name) {}
 
     private:
         expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
-        std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
         symbol_name m_name;
 };
 
-class temp_variable_node : public expression_node {
+class temp_variable_node : public address_expression_node {
     public:
         temp_variable_node(expression_t expr) : m_count(0), m_expr(expr) {}
 
     private:
         expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
-        std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
         symbol_name name() const;
@@ -85,7 +83,7 @@ class temp_variable_node : public expression_node {
         expression_t m_expr;
 };
 
-class external_node : public expression_node {
+class external_node : public address_expression_node {
     public:
         external_node(symbol_name const &name) : m_name(name) {}
 
@@ -98,7 +96,7 @@ class external_node : public expression_node {
         symbol_name m_name;
 };
 
-class array_index_node : public expression_node {
+class array_index_node : public address_expression_node {
     public:
         array_index_node(
             symbol_name const &name,
@@ -116,7 +114,6 @@ class array_index_node : public expression_node {
     private:
         expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
-        std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
         
         static expression_t make_index_expression(
@@ -135,7 +132,7 @@ class array_index_node : public expression_node {
         expression_t m_index_expr;
 };
 
-class function_invocation_node : public expression_node {
+class function_invocation_node : public value_expression_node {
     public:
         function_invocation_node(
             symbol_name const &function,
@@ -156,7 +153,7 @@ class function_invocation_node : public expression_node {
 // of the function definition.  This wrapper node isn't necessary, but it's
 // useful for debugging and ensuring the internal symbols are marked a
 // referenced.
-class inlined_internal_node : public expression_node {
+class inlined_internal_node : public value_expression_node {
     public:
         inlined_internal_node(
             arithmetic_function_t const &f,

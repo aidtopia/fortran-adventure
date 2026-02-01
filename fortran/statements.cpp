@@ -36,6 +36,7 @@ namespace {
         unsigned &t
     ) {
         u.mark_symbol_referenced(item.variable);
+        for (auto &index : item.indices) index->mark_referenced(u, t);
         mark_index_control_referenced(item.index_control, u, t);
     }
 
