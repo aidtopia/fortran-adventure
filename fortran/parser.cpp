@@ -1606,46 +1606,29 @@ parser::expected<operator_t> parser::parse_operator() {
     // performed on the numeric values, so we'll switch to bit_not, bit_and,
     // etc. in code generation.
     if (accept('.')) {
-        if (accept('G')) {
-            if (accept('T') && accept('.')) return operator_t::compare_gt;
-            if (accept('E') && accept('.')) return operator_t::compare_gte;
-            return error("expected .GT. or .GE.");
+        switch (current()) {
+        #define RECOG(TOKEN, OP) if (accept(TOKEN".")) return operator_t::##OP
+            case 'A': RECOG("AND", logic_and);
+                      break;
+            case 'E': RECOG("EQ",  compare_eq);
+                      RECOG("EQV", logic_eqv);
+                      break;
+            case 'G': RECOG("GE",  compare_gte);
+                      RECOG("GT",  compare_gt);
+                      break;
+            case 'L': RECOG("LE",  compare_lte);
+                      RECOG("LT",  compare_lt);
+                      break;
+            case 'N': RECOG("NE",  compare_ne);
+                      RECOG("NOT", logic_not);
+                      break;
+            case 'O': RECOG("OR",  logic_or);
+                      break;
+            case 'X': RECOG("XOR", logic_xor);
+                      break;
+        #undef RECOG
         }
-        if (accept('L')) {
-            if (accept('T') && accept('.')) return operator_t::compare_lt;
-            if (accept('E') && accept('.')) return operator_t::compare_lte;
-            return error("expected .LT. or .LE.");
-        }
-        if (accept('E')) {
-            if (accept('Q')) {
-                if (accept('.')) return operator_t::compare_eq;
-                if (accept('V') && accept('.')) return operator_t::logic_eqv;
-            }
-            return error("expected .EQ. OR .EQV.");
-        }
-        if (accept('N')) {
-            if (accept('E') && accept('.')) return operator_t::compare_ne;
-            if (accept('O') && accept('T') && accept('.')) {
-                return operator_t::logic_not;
-            }
-            return error("expected .NE. or .NOT.");
-        }
-        if (accept('A')) {
-            if (accept('N') && accept('D') && accept('.')) {
-                return operator_t::logic_and;
-            }
-            return error("expected .AND.");
-        }
-        if (accept('O')) {
-            if (accept('R') && accept('.')) return operator_t::logic_or;
-            return error("expected .OR.");
-        }
-        if (accept('X')) {
-            if (accept('O') && accept('R') && accept('.')) {
-                return operator_t::logic_xor;
-            }
-            return error("expected .XOR.");
-        }
+        return error("unrecognized operator");
     }
     return error("expected an operator");
 }
@@ -1661,7 +1644,7 @@ parser::expected<constant_t> parser::parse_constant() {
             if (!k) return error_of(std::move(k));
             return constant_t{k.value(), datatype::LITERAL};
         }
-        case '.': case 'T': case 'F': {
+        case '.': {
             auto k = parse_logical_constant();
             if (!k) return error_of(std::move(k));
             return constant_t{k.value(), datatype::LOGICAL};
@@ -1714,26 +1697,8 @@ parser::expected<machine_word_t> parser::parse_literal_constant() {
 }
 
 parser::expected<machine_word_t> parser::parse_logical_constant() {
-    if (accept('.')) {
-        if (match('T')) {
-            if (accept('T') && accept('R') && accept('U') && accept('E') &&
-                accept('.'))
-            {
-                return LOGICAL_TRUE;
-            }
-        } else if (match('F')) {
-            if (accept('F') && accept('A') && accept('L') && accept('S') &&
-                accept('E') && accept('.'))
-            {
-                return LOGICAL_FALSE;
-            }
-        }
-    } else if (accept('T')) {
-        return LOGICAL_TRUE;
-    } else if (accept('F')) {
-        return LOGICAL_FALSE;
-    }
-
+    if (accept(".TRUE."))  return LOGICAL_TRUE;
+    if (accept(".FALSE.")) return LOGICAL_FALSE;
     return error("expected .TRUE. or .FALSE.");
 }
 
