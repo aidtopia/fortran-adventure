@@ -532,7 +532,7 @@ constexpr std::string_view c_generator::external_dependencies() {
 #elif defined(_MSC_VER)
 #define NORETURN __declspec(noreturn)
 #elif __STDC_VERSION__ >= 201112
-#define NORETURN [[_Noreturn]]
+#define NORETURN _Noreturn
 #else
 #define NORETURN /*noreturn*/
 #endif
@@ -999,9 +999,11 @@ void kron_override_date(const char *p) {
     if (ispunct(*p)) ++p;
     int x2 = 0;
     if (isalpha(*p) && strlen(p) >= 3) {
-        char buffer[4] = {
-            (char)toupper(*p++), (char)toupper(*p++), (char)toupper(*p++), '\0'
-        };
+        char buffer[4];
+        buffer[0] = (char)toupper(*p++);
+        buffer[1] = (char)toupper(*p++);
+        buffer[2] = (char)toupper(*p++);
+        buffer[3] = '\0';
         const char *match = strstr(kron_mmm, buffer);
         if (match == NULL) return;
         const ptrdiff_t dist = match - kron_mmm;
@@ -1043,7 +1045,11 @@ char host_endianness() {
     #if CHAR_BIT == 8
         static const char buffer[sizeof(int)] = { 0x01, 0x02 };
         int test = -1;
+#if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
         memcpy_s(&test, sizeof(test), buffer, sizeof(buffer));
+#else
+        memcpy(&test, buffer, sizeof(buffer));
+#endif
         switch (test) {
             case 0x0102: return 'B';
             case 0x0201: return 'L';
@@ -1110,7 +1116,7 @@ typedef struct {
 
 static const host_corehdr host_coremodel = {
     {'C', 'O', 'R', 'E', '\x0D','\x0A', '\x1A', '\0'},
-    36, 64, '?', '\0', 0, (uint32_t)sizeof(host_corehdr), 0
+    36, 64, '?', '\0', 0, (uint32_t)sizeof(host_corehdr), {0}
 };
 
 bool host_dumpcore(const char *file_name) {
