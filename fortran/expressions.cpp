@@ -99,7 +99,12 @@ std::string constant_node::do_generate_value() const {
 
 expression_t variable_node::do_clone(argument_map_t const &args) const {
     if (auto const it = args.find(m_name); it != args.end()) {
-        return it->second;
+        // This variable node refers to one of the arguments, so substitute in
+        // a _clone_ of the argument expression.  Note that we don't want to
+        // pass the args on to this call to clone, since the substitutions
+        // should not be applied recursively.
+        auto const no_arguments = argument_map_t{};
+        return it->second->clone(no_arguments);
     }
     return std::make_shared<variable_node>(m_name);
 }
@@ -245,7 +250,7 @@ expression_t inlined_internal_node::do_clone(argument_map_t const &args) const {
 }
 
 std::string inlined_internal_node::do_generate_value() const {
-    return std::format("/*{}*/{}", m_name, m_expr->generate_value());
+    return std::format("/*{0}:*/{1}/*:{0}*/", m_name, m_expr->generate_value());
 }
 
 void inlined_internal_node::do_mark_referenced(unit &u, unsigned &t) {

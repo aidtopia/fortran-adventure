@@ -1152,7 +1152,7 @@ bool host_loadcore(const char *file_name) {
 #if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
     strncpy_s(fname, sizeof(fname), file_name, len);
 #else
-    strncpy(fname, file_name, len);
+    strncpy(fname, file_name, sizeof(fname));
 #endif
     host_tidyfname(fname, sizeof(fname), ".DMP");
     FILE *core_file = fopen(fname, "rb");
