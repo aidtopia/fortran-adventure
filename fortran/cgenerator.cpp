@@ -188,9 +188,29 @@ std::string c_generator::generate_prototypes(program const &prog) {
 
 std::string c_generator::generate_main_function(program const &prog) {
     return std::format(R"(
-void atexit_handler(void) {{ host_savecore(); }}
+bool offer_to_dump_core(void) {{
+    io_selectformat("'0ENTER FILE NAME TO SAVE CORE IMAGE: ',$");
+    io_output(0, 0);
+    char fname[260+1] = "";
+    if (fgets(fname, sizeof(fname), stdin) == NULL) return false;
+    host_tidyfname(fname, sizeof(fname), ".DMP");
+    if (*fname == '\0') {{
+        io_selectformat("' EXITING WITHOUT SAVING CORE IMAGE.'");
+        io_output(0, 0);
+        return false;
+    }}
+    if (host_dumpcore(fname)) {{
+        io_selectformat("'0OK'");
+        io_output(0, 0);
+        return true;
+    }}
+    io_selectformat("'0FAILED TO SAVE CORE IMAGE.'");
+    io_output(0, 0);
+    return false;
+}}
 
 int main(int argc, const char *argv[]) {{
+    host_init();
     io_init();
     kron_init();
     const char *core_name = NULL;
@@ -221,7 +241,7 @@ int main(int argc, const char *argv[]) {{
     if (core_name == NULL || *core_name == '\0' || !host_loadcore(core_name)) {{
         initialize_static_data();
     }}
-    atexit(atexit_handler);
+    atexit(offer_to_dump_core);
     sub{}();
     return 0;
 }}
@@ -505,6 +525,8 @@ constexpr std::string_view c_generator::external_dependencies() {
     return R"(#define __STDC_WANT_LIB_EXT1__ 1
 #include <assert.h>
 #include <ctype.h>
+#include <fcntl.h>
+#include <io.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -584,7 +606,7 @@ constexpr std::string_view c_generator::io_subsystem() {
 struct iocontext {
     const char *mappings[IO_MAX_MAPPINGS];
     FILE *units[IO_MAX_UNITS+1];
-    char record[132];
+    char record[132+4]; // +4 carriage control, termination, multiple of 8
     char guard[sizeof(word_t)];
     const char *psrc;
     char       *pdst;
@@ -594,6 +616,7 @@ struct iocontext {
     const char *(*reader)(int, const char *, addr_t);
     char *(*writer)(int, addr_t, char *);
     bool upcase;
+    bool suppress_cr;
 } io;
 
 void io_init() {
@@ -614,6 +637,7 @@ void io_init() {
     io.reader = NULL;
     io.writer = NULL;
     io.upcase = false;
+    io.suppress_cr = false;
 }
 
 void io_addmapping(const char *mapping) {
@@ -662,6 +686,7 @@ void io_loadrecord(word_t unit) {
     FILE *source = io.units[unit];
     assert(source != NULL);
     if (source != NULL) {
+        if (source == stdin) fflush(stdout);
         while (i < bufsize) {
             int ch = fgetc(source);
             if (ch == EOF || ch == '\n') break;
@@ -817,12 +842,18 @@ void io_input(addr_t var) {
 void io_storerecord(word_t unit) {
     FILE *out = unit == 0 ? stdout : io.units[unit];
     *io.pdst = '\0';
+    const char CR = '\x0D', LF = '\x0A';
     switch (io.record[0]) {
-        case ' ':  fputs(io.record+1, out); /*FALLTHROUGH*/
-        case '\0': fputc('\n', out); break;
-        case '+':  fputs(io.record+1, out); fputc('\r', out); break;
-        default:   fputs(io.record, out); fputc('\n', out); break;
+        case '-':  fputc(LF, out); /*FALLTHROUGH*/
+        case '0':  fputc(LF, out); /*FALLTHROUGH*/
+        case ' ':  fputc(LF, out); /*FALLTHROUGH*/
+        case '+':  fputs(io.record+1, out);
+                   break;
+        default:   fputc(LF, out);
+                   fputs(io.record, out);
+                   break;
     }
+    if (io.suppress_cr) io.suppress_cr = false; else fputc(CR, out);
     memset(io.record, 0, sizeof(io.record));
     io.psrc = io.pdst = io.record;
 }
@@ -850,6 +881,7 @@ void io_output(word_t unit, addr_t var) {
             switch (*io.pfmt) {
                 case '\0': io_storerecord(unit); return;
                 case '/':  io_storerecord(unit); ++io.pfmt; break;
+                case '$':  io.suppress_cr = true; ++io.pfmt; break;
                 case '\'':
                     ++io.pfmt;
                     while (*io.pfmt != '\0' && *io.pfmt != '\'') {
@@ -882,7 +914,7 @@ void io_output(word_t unit, addr_t var) {
             case 'G':
             case 'I': io.writer = io_writeinteger; ++io.pfmt; break;
             case 'L': io.writer = io_writelogical; ++io.pfmt; break;
-            default: assert(!"unsupported conversion format"); break;
+            default: assert(!"unsupported field specification"); break;
         }
         if (io.writer == NULL) { io_storerecord(unit); return; }
         io.width = 0;
@@ -1027,6 +1059,11 @@ void kron_override_date(const char *p) {
 constexpr std::string_view c_generator::host_subsystem() {
     return R"(
 // Host subsystem (core dumps, pause, etc.)
+void host_init() {
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);  // do NOT translate LF -> CRLF
+#endif
+}
 
 char host_endianness() {
     #if CHAR_BIT == 8
@@ -1121,15 +1158,6 @@ bool host_dumpcore(const char *file_name) {
     fclose(core_file);
     if (!success) fputs("failed to save core dump", stderr);
     return success;
-}
-
-bool host_savecore() {
-    puts("ENTER FILE NAME TO SAVE CORE IMAGE:");
-    char fname[260+1] = "";
-    if (fgets(fname, sizeof(fname), stdin) == NULL) return false;
-    host_tidyfname(fname, sizeof(fname), ".DMP");
-    if (*fname == '\0') return false;
-    return host_dumpcore(fname);
 }
 
 bool host_loadcore(const char *file_name) {
