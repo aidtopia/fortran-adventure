@@ -1122,7 +1122,8 @@ parser::expected<expression_t> parser::parse_arithmetic_function_expression(
     // In theory, any parameter of an arithmetic function may shadow another
     // symbol that's been declared.  They need to be in scope only while parsing
     // the expression that defines the function.  So we temporarily add them as
-    // shadows, and them pop them right back off.
+    // shadows, and them pop them right back off.  Any other variables
+    // referenced in the arithmetic function are scoped to the unit.
     for (auto const &param : params) {
         auto symbol = symbol_info{};
         symbol.name = param;

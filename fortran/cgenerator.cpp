@@ -438,9 +438,7 @@ std::string c_generator::generate_format_specifications(unit const &u) {
                               labels.size() != 1 ? "s" : "");
     for (auto const &label : labels) {
         if (!label.referenced) continue;
-        auto const it = u.formats().find(label.name);
-        auto const fields =
-            it == u.formats().end() ? "MISSING SPEC" : it->second;
+        auto const fields = u.find_format(label.name);
         result += std::format(" static const char fmt{}[] = \"{}\";\n",
                               label.name, escape_string(fields));
     }

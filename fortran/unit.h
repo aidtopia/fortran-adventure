@@ -16,15 +16,6 @@
 
 namespace aid::fortran {
 
-// Each entry maps the COMMON block name to the count of the number of
-// variables it contains.
-using comdat_table = std::map<symbol_name, unsigned>;
-
-using format_table = std::map<symbol_name, field_list_t>;
-
-// Maps the name of a symbolkind::label to an index in m_code
-using target_table = std::map<symbol_name, std::size_t>;
-
 // A unit (think "translation unit") contains the symbols and statements for
 // a program, subroutine, or function (i.e., Fortran subprograms).
 class unit {
@@ -73,7 +64,7 @@ class unit {
 
         void add_format(symbol_name label, field_list_t &&fields);
         void add_format(statement_number_t number, field_list_t &&fields);
-        format_table const &formats() const { return m_formats; }
+        field_list_t find_format(symbol_name const &label) const;
 
         void add_statement(statement_t statement);
         statement_block const &code() const { return m_code; }
@@ -97,12 +88,22 @@ class unit {
         static std::string format_dimension(dimension const &d);
         static std::string format_word(machine_word_t w, datatype type);
 
+        // Each entry maps the COMMON block name to the count of the number of
+        // variables it contains.
+        using comdat_table = std::map<symbol_name, unsigned>;
+
+        // Maps statement labels to the field list of a FORMAT statement.
+        using format_table = std::map<symbol_name, field_list_t>;
+
+        // Maps the name of a symbolkind::label to an index in m_code.
+        using branch_target_table = std::map<symbol_name, std::size_t>;
+
         symbol_name  m_unit_name;
         symbol_table m_symbols;
         symbol_table m_shadows;  // temporary symbols that might shadow others
         format_table m_formats;
         statement_block m_code;
-        target_table m_targets;
+        branch_target_table m_targets;
         unsigned m_subroutine_types = 0u;  // bitmask: if b_n, then n arg count
         unsigned m_function_types   = 0u;  // bitmask: if b_n, then n arg count
         bool m_reachable = false;

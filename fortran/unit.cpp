@@ -85,6 +85,11 @@ void unit::add_format(statement_number_t number, field_list_t &&fields) {
     add_format(symbol_name{number}, std::move(fields));
 }
 
+field_list_t unit::find_format(symbol_name const &label) const {
+    auto const it = m_formats.find(label);
+    return it != m_formats.end() ? it->second : field_list_t{};
+}
+
 void unit::add_subroutine_pointer_type(std::size_t arg_count) {
     assert(arg_count < sizeof(m_subroutine_types)*CHAR_BIT);
     m_subroutine_types |= (1u << arg_count);
