@@ -241,13 +241,12 @@ std::string c_generator::generate_static_initialization(program const &prog) {
     auto to_init = std::vector<symbol_info>{};
     for (auto const &sub : prog) {
         auto const needs_static_init = [] (symbol_info const &s) {
-            return s.referenced &&
-                   (!s.init_data.empty() || s.kind == symbolkind::external);
+            return s.referenced && !s.init_data.empty();
         };
         to_init.append_range(sub.extract_symbols(needs_static_init));
     }
     // Given how address assignment proceeds, it's likely this sort is
-    // unnecessary.  But if address assigned changes in the future, it'd be
+    // unnecessary.  But if address assignment changes in the future, it'd be
     // nice to have the initializers sorted.
     std::sort(to_init.begin(), to_init.end(), by_address);
 
@@ -258,23 +257,10 @@ std::string c_generator::generate_static_initialization(program const &prog) {
     };
 
     auto result = "\nvoid initialize_static_data() {\n"s;
-    bool asserted_pointers_fit_in_words = false;
     for (auto &var : to_init) {
         auto const hint = var.kind == symbolkind::common
             ? std::format("{}:{}", var.comdat, var.name)
             : std::format("{}", var.name);
-
-        if (var.kind == symbolkind::external) {
-            if (!asserted_pointers_fit_in_words) {
-                result += " assert(sizeof(word_t) >= sizeof(void*));\n";
-                asserted_pointers_fit_in_words = true;
-            }
-            auto const prefix = var.type == datatype::none ? "sub" : "fn";
-            result +=
-                std::format(" /*{}*/ core[{}] = (word_t)(void*)(&{}{});\n",
-                            hint, var.address, prefix, var.name);
-            continue;
-        }
 
         auto const &data = var.init_data;
         if (is_run(data)) {
@@ -451,9 +437,12 @@ std::string c_generator::generate_external_declarations(unit const &u) {
     auto result = std::format(" // External subprogram{}\n",
                               externals.size() != 1 ? "s" : "");
     for (auto const &external : externals) {
+        auto const prefix = external.type == datatype::none ? "sub" : "fn";
         result +=
-            std::format(" const addr_t v{:<6} = {:5}; // = ptr to {}\n",
-                        external.name, external.address, external.name);
+            std::format(
+                " const addr_t v{0:<6} = {1:5};"
+                " core[v{0}] = (word_t)(void*)(&{2}{0});\n",
+                external.name, external.address, prefix);
     }
     return result;
 }
