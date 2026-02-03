@@ -218,7 +218,7 @@ int main(int argc, const char *argv[]) {{
             fprintf(stderr, "ignoring argument: %s\n", arg);
         }}
     }}
-    if (core_name == NULL || *core_name != '\0' || !host_loadcore(core_name)) {{
+    if (core_name == NULL || *core_name == '\0' || !host_loadcore(core_name)) {{
         initialize_static_data();
     }}
     atexit(atexit_handler);
