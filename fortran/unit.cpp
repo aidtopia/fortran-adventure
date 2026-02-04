@@ -5,6 +5,9 @@
 #include <memory>
 #include <print>
 #include <set>
+#include <string_view>
+
+using namespace std::string_view_literals;
 
 namespace aid::fortran {
 
@@ -160,8 +163,9 @@ void unit::print_symbol_table(std::ostream &out) const {
     auto const copies = extract_symbols(is_any, by_name);
     for (auto const &s : copies) { 
         auto const comdat =
-            s.kind != symbolkind::common ? "" :
-            s.comdat.empty() ? "//" : std::format("{}", s.comdat);
+            s.kind == symbolkind::common && s.comdat.empty()
+                ? "//"sv
+                : s.comdat.view();
         auto const idx = s.index > 0 ? std::format("{}", s.index) : "";
         std::print(out, "{:{}}{:<{}} {:<{}} {:<{}} {:>{}} {:<{}} ",
                    s.referenced ? "" : "!", k_bang,
