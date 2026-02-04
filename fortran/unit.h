@@ -53,7 +53,6 @@ class unit {
         bool has_symbol(symbol_name const &name) const;
         symbol_info find_symbol(symbol_name const &name) const;
 
-        std::vector<symbol_info> extract_symbols() const;
         std::vector<symbol_info> extract_symbols(
             std::function<bool (symbol_info const &)> choose_if
         ) const;
@@ -110,6 +109,9 @@ class unit {
 };
 
 // Predicates for extract_symbols.
+inline bool all(symbol_info const &) {
+    return true;
+}
 inline bool is_array(symbol_info const &a) {
     return !a.shape.empty();
 }

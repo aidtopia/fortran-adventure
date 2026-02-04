@@ -92,19 +92,6 @@ std::size_t symbol_table::update(symbol_info &&symbol) {
     return i;
 }
 
-std::vector<std::size_t> symbol_table::indices_sorted_by_name() const {
-    std::vector<std::size_t> indices;
-    for (auto const &entry : m_index) { indices.push_back(entry.second); }
-    return indices;
-}
-
-std::vector<symbol_info> symbol_table::extract() const {
-    std::vector<symbol_info> copies;
-    copies.reserve(m_symbols.size());
-    std::copy(m_symbols.begin(), m_symbols.end(), std::back_inserter(copies));
-    return copies;
-}
-
 std::vector<symbol_info> symbol_table::extract_if(
     std::function<bool (symbol_info const &)> predicate
 ) const {

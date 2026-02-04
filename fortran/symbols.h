@@ -184,13 +184,6 @@ class symbol_table {
         // Returns the number of entries in the table.
         std::size_t size() const { return m_symbols.size(); }
 
-        // Returns the sequence of indices to visit all of the symbols as if
-        // they are sorted by name.
-        std::vector<std::size_t> indices_sorted_by_name() const;
-
-        // Returns a copy of each symbol.
-        std::vector<symbol_info> extract() const;
-
         // Returns a copy of each symbol that matches the predicate.
         std::vector<symbol_info> extract_if(
             std::function<bool (symbol_info const &)> predicate

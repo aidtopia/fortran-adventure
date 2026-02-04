@@ -57,10 +57,6 @@ symbol_info unit::find_symbol(symbol_name const &name) const {
     return m_symbols.get(name);
 }
 
-std::vector<symbol_info> unit::extract_symbols() const {
-    return m_symbols.extract();
-}
-
 std::vector<symbol_info> unit::extract_symbols(
     std::function<bool (symbol_info const &)> predicate
 ) const {
