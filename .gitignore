@@ -14,11 +14,13 @@ fortran/x86/
 fortran/x64/
 fortran/.vs/
 
+# Other stuff I'm collecting but don't want in the repo (for now)
+transcripts/
+
 # Excel creates temporary files when you have something like
 # tools/wizard.xlsx open.
 ~$*.xlsx
 
 # Miscellaneous Visual Studio and MSVC files.
-vc140.*
+vc14*.*
 *.vcxproj.user
-
