@@ -324,7 +324,7 @@ parser::expected<statement_t> parser::parse_end() {
 }
 
 parser::expected<statement_t>
-parser::parse_arithmetic_function_definition(symbol_name const &name) {
+parser::parse_arithmetic_function(symbol_name const &name) {
     if (m_arithmetic_functions.contains(name)) {
         return error("cannot re-define arithmetic function '{}'", name);
     }
@@ -613,7 +613,7 @@ parser::expected<statement_t> parser::parse_assignment() {
                 "arithmetic function {} must be defined before the first "
                 "executable statement\n", name);
         }
-        return parse_arithmetic_function_definition(name);
+        return parse_arithmetic_function(name);
     }
 
     // A regular assignment is an executable statement, so bump the phase if

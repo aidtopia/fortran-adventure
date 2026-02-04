@@ -149,8 +149,7 @@ class parser {
         expected<statement_t> parse_function(datatype type = datatype::unknown);
         expected<statement_t> parse_subroutine();
         expected<statement_t> parse_end();
-        expected<statement_t>
-        parse_arithmetic_function_definition(symbol_name const &name);
+        expected<statement_t> parse_arithmetic_function(symbol_name const &fn);
 
         // Non-executable statements
         expected<statement_t> parse_common();
