@@ -47,8 +47,8 @@ void program::add_main_subprogram(unit &&subprogram) {
 }
 
 void program::add_subprogram(unit &&subprogram) {
-    // If this will be the first subprogram added, then we need to reserve
-    // the first slot for the PROGRAM.
+    // If this will be the first SUBROUTINE or FUNCTION added, then we need to
+    // reserve the first slot for the PROGRAM.
     if (m_subprograms.empty()) m_subprograms.emplace_back();
     m_subprograms.push_back(std::move(subprogram));
 }

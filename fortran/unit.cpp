@@ -15,6 +15,11 @@ namespace aid::fortran {
 // executable statement in the subprogram.
 auto constexpr entry = symbol_name{"_ENTRY"};
 
+std::string unit::full_name() const {
+    if (m_parent_name.empty()) return std::format("{}", m_unit_name);
+    return std::format("{}_{}", m_parent_name, m_unit_name);
+}
+
 void unit::update_symbol(symbol_info const &symbol) {
     assert(symbol.kind != symbolkind::shadow);
     m_symbols.update(symbol);
@@ -151,7 +156,7 @@ void unit::print_symbol_table(std::ostream &out) const {
     auto constexpr k_init_data  = k_table_width - k_subtotal;
     auto constexpr k_format     = k_init_data;
 
-    auto const name = std::format("{}{}", m_reachable ? "" : "!", unit_name());
+    auto const name = std::format("{}{}", m_reachable ? "" : "!", full_name());
     std::print(out, "{:-^{}}\n", name, k_table_width);
     std::print(out,
         "{:-^{}}{:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}} {:-^{}}\n",

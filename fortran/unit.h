@@ -22,6 +22,12 @@ class unit {
     public:
         explicit unit(symbol_name name = symbol_name{""})
             : m_unit_name(name) {}
+
+        // Arithmetic functions are implemented as "internal" subprograms within
+        // the parent's scope.
+        explicit unit(symbol_name name, unit const &parent)
+            : m_unit_name(name), m_parent_name(parent.unit_name()) {}
+
         ~unit() = default;
         unit(unit &&rhs) noexcept = default;
         unit &operator=(unit &&rhs) noexcept = default;
@@ -34,6 +40,7 @@ class unit {
         // The name of this unit (i.e., the program, subroutine, or function).
         symbol_name unit_name() const { return m_unit_name; }
         void set_unit_name(symbol_name const &name) { m_unit_name = name; }
+        std::string full_name() const;
 
         // Replaces (or adds) the symbol record.
         void update_symbol(symbol_info const &symbol);
@@ -97,12 +104,16 @@ class unit {
         // Maps the name of a symbolkind::label to an index in m_code.
         using branch_target_table = std::map<symbol_name, std::size_t>;
 
+        using internal_table = std::map<symbol_name, unit>;
+
         symbol_name  m_unit_name;
+        symbol_name  m_parent_name;  // if this is internal, else empty
         symbol_table m_symbols;
         symbol_table m_shadows;  // temporary symbols that might shadow others
         format_table m_formats;
         statement_block m_code;
         branch_target_table m_targets;
+        internal_table m_internals;  // i.e., arithmetic functions
         unsigned m_subroutine_types = 0u;  // bitmask: if b_n, then n arg count
         unsigned m_function_types   = 0u;  // bitmask: if b_n, then n arg count
         bool m_reachable = false;
