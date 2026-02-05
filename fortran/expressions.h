@@ -1,7 +1,6 @@
 #ifndef AID_FORTRAN_EXPRESSIONS_H
 #define AID_FORTRAN_EXPRESSIONS_H
 
-#include "arithmeticfunction.h"
 #include "expression.h"
 #include "symbols.h"
 
@@ -22,7 +21,6 @@ class unary_node : public value_expression_node {
         unary_node(operator_t op, expression_t node) : m_op(op), m_node(node) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
@@ -36,7 +34,6 @@ class binary_node : public value_expression_node {
             m_lhs(lhs), m_op(op), m_rhs(rhs) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
@@ -50,7 +47,6 @@ class constant_node : public value_expression_node {
         constant_node(machine_word_t constant) : m_constant(constant) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_value() const override;
 
         machine_word_t m_constant;
@@ -61,7 +57,6 @@ class variable_node : public address_expression_node {
         variable_node(symbol_name const &name) : m_name(name) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
@@ -73,7 +68,6 @@ class temp_variable_node : public address_expression_node {
         temp_variable_node(expression_t expr) : m_count(0), m_expr(expr) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
@@ -88,7 +82,6 @@ class external_node : public address_expression_node {
         external_node(symbol_name const &name) : m_name(name) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
         void do_mark_referenced(unit &, unsigned &) override;
 
@@ -111,7 +104,6 @@ class array_index_node : public address_expression_node {
         ) : m_array(name), m_index_expr(index_expr) {}
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_address() const override;
         void do_mark_referenced(unit &, unsigned &) override;
         
@@ -136,46 +128,28 @@ class function_invocation_node : public value_expression_node {
         function_invocation_node(
             symbol_name const &function,
             argument_list_t const &arguments
-        ) : m_function(function), m_arguments(arguments) {}
+        ) : m_parent(), m_function(function), m_arguments(arguments) {}
+        function_invocation_node(
+            symbol_name const &parent,
+            symbol_name const &function,
+            argument_list_t const &arguments
+        ) : m_parent(parent), m_function(function), m_arguments(arguments) {
+            assert(!m_parent.empty() && "wrong c'tor if no parent");
+        }
 
     private:
-        expression_t do_clone(argument_map_t const &args) const override;
         std::string do_generate_value() const override;
         void do_mark_referenced(unit &, unsigned &) override;
+
         static std::string formatted_args(argument_list_t const &arguments);
-
-        symbol_name m_function;
-        argument_list_t m_arguments;
-};
-
-// An invocation of an arithmetic function is handled as an inline expansion
-// of the function definition.  This wrapper node isn't necessary, but it's
-// useful for debugging and ensuring the internal symbols are marked a
-// referenced.
-class inlined_internal_node : public value_expression_node {
-    public:
-        inlined_internal_node(
-            arithmetic_function_t const &f,
-            argument_list_t const &args
-        ) : m_name(f.name), m_expr(instantiate(f, args)) {}
-
-        inlined_internal_node(
-            symbol_name name,
-            expression_t expr
-        ) : m_name(name), m_expr(expr) {}
-
-    private:
-        expression_t do_clone(argument_map_t const &args) const override;
-        std::string do_generate_value() const override;
-        void do_mark_referenced(unit &, unsigned &) override;
-
-        static expression_t instantiate(
-            arithmetic_function_t const &func,
-            argument_list_t const &args
+        static std::string full_name(
+            symbol_name const &parent,
+            symbol_name const &function
         );
 
-        symbol_name m_name;
-        expression_t m_expr;
+        symbol_name m_parent;  // non-empty for internal functions
+        symbol_name m_function;
+        argument_list_t m_arguments;
 };
 
 }

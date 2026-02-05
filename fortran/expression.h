@@ -39,10 +39,6 @@ class expression_node {
     public:
         virtual ~expression_node() = default;
 
-        expression_t clone(argument_map_t const &args) const {
-            return do_clone(args);
-        }
-
         std::string generate_address() const { return do_generate_address(); }
         std::string generate_value() const { return do_generate_value(); }
         void mark_referenced(unit &u, unsigned &temp_count) {
@@ -50,7 +46,6 @@ class expression_node {
         }
 
     private:
-        virtual expression_t do_clone(argument_map_t const &args) const = 0;
         virtual std::string do_generate_address() const = 0;
         virtual std::string do_generate_value() const = 0;
         virtual void do_mark_referenced(unit &, unsigned &) {};

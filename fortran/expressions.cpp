@@ -56,10 +56,6 @@ namespace {
 
 }  // anonymous namespace
 
-expression_t unary_node::do_clone(argument_map_t const &args) const {
-    return std::make_shared<unary_node>(m_op, m_node->clone(args));
-}
-
 std::string unary_node::do_generate_value() const {
     return std::format("{}({})",
                        operator_function(m_op), m_node->generate_value());
@@ -70,11 +66,6 @@ void unary_node::do_mark_referenced(unit &u, unsigned &t) {
     m_node->mark_referenced(u, t);
 }
 
-
-expression_t binary_node::do_clone(argument_map_t const &args) const {
-    return std::make_shared<binary_node>(
-        m_lhs->clone(args), m_op, m_rhs->clone(args));
-}
 
 std::string binary_node::do_generate_value() const {
     return std::format("{}({}, {})",
@@ -88,26 +79,10 @@ void binary_node::do_mark_referenced(unit &u, unsigned &t) {
 }
 
 
-expression_t constant_node::do_clone(argument_map_t const &) const {
-    return std::make_shared<constant_node>(m_constant);
-}
-
 std::string constant_node::do_generate_value() const {
     return std::format("{}", m_constant);
 }
 
-
-expression_t variable_node::do_clone(argument_map_t const &args) const {
-    if (auto const it = args.find(m_name); it != args.end()) {
-        // This variable node refers to one of the arguments, so substitute in
-        // a _clone_ of the argument expression.  Note that we don't want to
-        // pass the args on to this call to clone, since the substitutions
-        // should not be applied recursively.
-        auto const no_arguments = argument_map_t{};
-        return it->second->clone(no_arguments);
-    }
-    return std::make_shared<variable_node>(m_name);
-}
 
 std::string variable_node::do_generate_address() const {
     return std::format("v{}", m_name);
@@ -117,10 +92,6 @@ void variable_node::do_mark_referenced(unit &u, unsigned &) {
     u.mark_symbol_referenced(m_name);
 }
 
-
-expression_t temp_variable_node::do_clone(argument_map_t const &args) const {
-    return std::make_shared<temp_variable_node>(m_expr->clone(args));
-}
 
 std::string temp_variable_node::do_generate_address() const {
     return std::format("((core[v{0}] = {1}), v{0})",
@@ -132,6 +103,7 @@ void temp_variable_node::do_mark_referenced(unit &u, unsigned &counter) {
     // Note that we're not just marking the symbol as referenced, we _may_ be
     // creating it.
     auto symbol = u.find_symbol(name());
+    symbol.kind = symbolkind::temporary;
     symbol.type = datatype::INTEGER;  // HACK!!!!
     symbol.referenced = true;
     u.update_symbol(symbol);
@@ -144,10 +116,6 @@ symbol_name temp_variable_node::name() const {
 }
 
 
-expression_t external_node::do_clone(argument_map_t const &) const {
-    return std::make_shared<external_node>(m_name);
-}
-
 std::string external_node::do_generate_address() const {
     return std::format("v{}", m_name);
 }
@@ -156,11 +124,6 @@ void external_node::do_mark_referenced(unit &u, unsigned &) {
     u.mark_symbol_referenced(m_name);
 }
 
-
-expression_t array_index_node::do_clone(argument_map_t const &args) const {
-    return std::make_shared<array_index_node>(
-        m_array, m_index_expr->clone(args));
-}
 
 std::string array_index_node::do_generate_address() const {
     return std::format("(v{} + (addr_t){})",
@@ -209,20 +172,10 @@ expression_t array_index_node::scale_up(
 }
 
 
-expression_t function_invocation_node::do_clone(
-    argument_map_t const &args
-) const {
-    argument_list_t cloned_args;
-    cloned_args.reserve(m_arguments.size());
-    for (auto const &arg : m_arguments) {
-        cloned_args.push_back(arg->clone(args));
-    }
-    return std::make_shared<function_invocation_node>(
-        m_function, std::move(cloned_args));
-}
-
 std::string function_invocation_node::do_generate_value() const {
-    return std::format("fn{}({})", m_function, formatted_args(m_arguments));
+    return std::format("fn{}({})",
+                       full_name(m_parent, m_function),
+                       formatted_args(m_arguments));
 }
 
 void function_invocation_node::do_mark_referenced(unit &u, unsigned &t) {
@@ -230,6 +183,19 @@ void function_invocation_node::do_mark_referenced(unit &u, unsigned &t) {
     for (const auto &arg : m_arguments) {
         arg->mark_referenced(u, t);
     }
+    assert(m_parent.empty()          || // not an internal function
+           m_parent == u.unit_name() || // internal to the unit
+           m_parent == u.parent_name()  // from another internal of same parent
+    );
+}
+
+std::string function_invocation_node::full_name(
+    symbol_name const &parent,
+    symbol_name const &function
+) {
+    return parent.empty()
+        ? std::format("{}", function)
+        : std::format("{}_{}", parent, function);
 }
 
 std::string function_invocation_node::formatted_args(
@@ -242,33 +208,6 @@ std::string function_invocation_node::formatted_args(
         formatted.append(arg->generate_address());
     }
     return formatted;
-}
-
-
-expression_t inlined_internal_node::do_clone(argument_map_t const &args) const {
-    return std::make_shared<inlined_internal_node>(m_name, m_expr->clone(args));
-}
-
-std::string inlined_internal_node::do_generate_value() const {
-    return std::format("/*{0}:*/{1}/*:{0}*/", m_name, m_expr->generate_value());
-}
-
-void inlined_internal_node::do_mark_referenced(unit &u, unsigned &t) {
-    u.mark_symbol_referenced(m_name);
-    m_expr->mark_referenced(u, t);
-}
-
-expression_t inlined_internal_node::instantiate(
-    arithmetic_function_t const &func,
-    argument_list_t const &args
-) {
-    assert(args.size() == func.params.size());
-    auto variable_substitutions = argument_map_t{};
-    for (auto i = 0uz; i < args.size(); ++i) {
-        variable_substitutions[func.params[i]] = args[i];
-    }
-
-    return func.definition->clone(variable_substitutions);
 }
 
 }

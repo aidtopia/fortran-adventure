@@ -2,6 +2,7 @@
 #define AID_FORTRAN_UTILITY_H
 
 #include <array>
+#include <concepts>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -20,6 +21,23 @@ std::string constexpr to_upper_ascii(std::string_view text) {
     }
     return result;
 }
+
+template <std::integral T>
+std::string_view plural(
+    T count,
+    std::string_view not_one = "s",
+    std::string_view one = ""
+) {
+    return count != T{1} ? not_one : one;
+}
+
+template <typename ContainerT>
+    requires requires (ContainerT c) { std::size(c); }
+std::string_view plural(
+    ContainerT const &c,
+    std::string_view not_one = "s",
+    std::string_view one = ""
+) { return plural(std::size(c), not_one, one); }
 
 template <typename ExtensionsT>
 std::filesystem::path resolve_filepath(

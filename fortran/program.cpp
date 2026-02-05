@@ -1,4 +1,5 @@
 #include "program.h"
+#include "comdats.h"
 
 #include <algorithm>
 #include <cassert>
@@ -93,15 +94,9 @@ void mark_reachable(program &prog) {
 
 unsigned assign_addresses(program &prog) {
     auto memsize = 1u;  // first slot reserved like NULL
-    auto const comdat_sizes = common_block_sizes(prog);
-    auto comdat_bases = std::map<symbol_name, unsigned>{};
-    for (auto const &[block, size] : comdat_sizes) {
-        auto const base = memsize;
-        memsize += size;
-        comdat_bases[block] = base;
-    }
+    auto const comdats = common_blocks(memsize, prog);  // changes memsize!
 
-    // In Fortran IV, recursion and re-entrancy are not allowed because local
+    // In Fortran IV, recursion and re-entrancy are not allowed.  Local
     // variables are not allocated on a stack.  All variables in the program
     // have static storage.
     for (auto &sub : prog) {
@@ -119,76 +114,73 @@ unsigned assign_addresses(program &prog) {
         if (auto commons = sub.extract_symbols(is_common, by_block_index);
             !commons.empty()
         ) {
+            auto range = comdat_address_range{0, 0};
             auto block = symbol_name{};
-            auto base = 0u;
             auto offset = 0u;
             for (auto &common : commons) {
                 if (block != common.comdat) {
                     block = common.comdat;
-                    base = comdat_bases[block];
+                    assert(comdats.contains(block));
+                    range = comdats.find(block)->second;
                     offset = 0u;
                 }
                 auto const size = core_size(common);
                 if (common.referenced) {
-                    common.address = base + offset;
+                    common.address = range.base + offset;
                     sub.update_symbol(std::move(common));
                 }
                 offset += size;  // even if not referenced!
-                assert(comdat_sizes.contains(block) &&
-                       offset <= comdat_sizes.find(block)->second);
+                assert(offset <= range.size);
             }
         }
-        if (auto locals = sub.extract_symbols(is_referenced_local);
-            !locals.empty()
-        ) {
-            for (auto &local : locals) {
-                local.address = memsize;
-                memsize += core_size(local);
-                sub.update_symbol(std::move(local));
-            }
+        for (auto &local : sub.extract_symbols(is_referenced_local_or_temp)) {
+            local.address = memsize;
+            memsize += core_size(local);
+            sub.update_symbol(std::move(local));
         }
-        if (auto externals = sub.extract_symbols(is_referenced_external);
-            !externals.empty()
-        ) {
-            for (auto &external : externals) {
-                external.address = memsize;
-                memsize += core_size(external);
-                sub.update_symbol(std::move(external));
+        for (auto &external : sub.extract_symbols(is_referenced_external)) {
+            external.address = memsize;
+            memsize += core_size(external);
+            sub.update_symbol(std::move(external));
+        }
+
+        for (auto &internal : sub.internals()) {
+            // Internal units need their own addresses for a few symbols.
+            auto is_independent = [](symbol_info const &a) {
+                return a.referenced && (
+                    a.kind == symbolkind::argument  ||
+                    a.kind == symbolkind::retval    ||
+                    a.kind == symbolkind::temporary
+                );
+            };
+            for (auto symbol : internal.extract_symbols(is_independent)) {
+                assert(symbol.address == 0u);
+                symbol.address = memsize;
+                memsize += core_size(symbol);
+                internal.update_symbol(symbol);
             }
+
+            // Most of the result of the symbols should be aliases of the
+            // parent unit.
+            auto is_alias_of_parent = [](symbol_info const &a) {
+                return a.referenced && (
+                    a.kind == symbolkind::local      ||
+                    a.kind == symbolkind::common     ||
+                    a.kind == symbolkind::subprogram ||
+                    a.kind == symbolkind::internal
+                );
+            };
+            for (auto alias : internal.extract_symbols(is_alias_of_parent)) {
+                auto const &parent = sub.find_symbol(alias.name);
+                assert(alias.address == 0u);
+                alias.address = parent.address;
+                internal.update_symbol(alias);
+            }
+
         }
     }
     prog.set_core_requirement(memsize);
     return memsize;
-}
-
-std::map<symbol_name, unsigned> common_block_sizes(program const &prog) {
-    // Within a subprogram, a set of variables in the same common block
-    // determines the required size of that block.  If two or more subprograms
-    // require different sizes for the same block, the first one loaded
-    // should determine the size.  If a later subprogram needs a larger size,
-    // it's officially an error, but we'll just use the largest.
-    auto comdats = std::map<symbol_name, unsigned>{};
-
-    auto update = [&comdats](symbol_name const &block, unsigned size) {
-        auto const prior_size = comdats.contains(block) ? comdats[block] : 0;
-        comdats[block] = std::max(size, prior_size);
-    };
-
-    for (auto const &sub : prog) {
-        auto const commons = sub.extract_symbols(is_common, by_block_index);
-        auto block = symbol_name{};
-        auto size = 0u;
-        for (auto const &var : commons) {
-            if (var.comdat != block) {
-                update(block, size);
-                block = var.comdat;
-                size = 0u;
-            }
-            size += core_size(var);
-        }
-        if (size > 0u) update(block, size);
-    }
-    return comdats;
 }
 
 }

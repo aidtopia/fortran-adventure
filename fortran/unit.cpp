@@ -15,28 +15,29 @@ namespace aid::fortran {
 // executable statement in the subprogram.
 auto constexpr entry = symbol_name{"_ENTRY"};
 
+void unit::set_unit_name(symbol_name const &name) {
+    m_unit_name = name;
+    // This unit's internal functions know their parent name, so update those.
+    for (auto &internal : m_internals) {
+        internal.set_parent_name(name);
+    }
+}
+
+void unit::set_parent_name(symbol_name const &name) {
+    m_parent_name = name;
+}
+
 std::string unit::full_name() const {
     if (m_parent_name.empty()) return std::format("{}", m_unit_name);
     return std::format("{}_{}", m_parent_name, m_unit_name);
 }
 
 void unit::update_symbol(symbol_info const &symbol) {
-    assert(symbol.kind != symbolkind::shadow);
     m_symbols.update(symbol);
 }
 
 void unit::update_symbol(symbol_info &&symbol) {
-    assert(symbol.kind != symbolkind::shadow);
     m_symbols.update(std::move(symbol));
-}
-
-void unit::push_shadow(symbol_info &&symbol) {
-    assert(symbol.kind == symbolkind::shadow);
-    m_shadows.update(std::move(symbol));
-}
-
-void unit::pop_shadows() {
-    m_shadows.clear();
 }
 
 void unit::mark_symbol_referenced(symbol_name const &name) {
@@ -56,12 +57,10 @@ void unit::add_statement(statement_t statement) {
 }
 
 bool unit::has_symbol(symbol_name const &name) const {
-    return m_shadows.has(name) || m_symbols.has(name);
+    return m_symbols.has(name);
 }
 
 symbol_info unit::find_symbol(symbol_name const &name) const {
-    auto i = m_shadows.find(name);
-    if (i != symbol_table::npos) return m_shadows[i];
     return m_symbols.get(name);
 }
 
@@ -92,6 +91,10 @@ void unit::add_format(statement_number_t number, field_list_t &&fields) {
 field_list_t unit::find_format(symbol_name const &label) const {
     auto const it = m_formats.find(label);
     return it != m_formats.end() ? it->second : field_list_t{};
+}
+
+void unit::add_internal(unit &&internal) {
+    m_internals.push_back(std::move(internal));
 }
 
 void unit::add_subroutine_pointer_type(std::size_t arg_count) {
@@ -137,6 +140,13 @@ void unit::mark_reachable() {
                 }
             }
         }
+    }
+
+    // TODO:  Generalize the function for finding all of the reachable units
+    // for a program so we can re-use it here to find all of the reachable
+    // internal units.  For now, though, ...
+    for (auto &internal : m_internals) {
+        internal.mark_reachable();
     }
 }
 
@@ -218,6 +228,9 @@ void unit::print_symbol_table(std::ostream &out) const {
             std::print(out, "{}", data);
         }
         std::print(out, "\n");
+    }
+    for (auto const &internal : m_internals) {
+        internal.print_symbol_table(out);
     }
 }
 

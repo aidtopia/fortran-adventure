@@ -1,7 +1,6 @@
 #ifndef AID_FORTRAN_PARSER_H
 #define AID_FORTRAN_PARSER_H
 
-#include "arithmeticfunction.h"
 #include "basicstatement.h"
 #include "datalist.h"
 #include "expressions.h"
@@ -51,10 +50,18 @@ class parser {
         static expected<program> parse_files(
             std::span<std::filesystem::path> paths
         );
-        static expected<program> parse_stream(std::istream &stream);
+        static expected<program> parse_stream(
+            std::istream &stream,
+            symbol_name program_name = symbol_name{}
+        );
 
     private:
-        explicit parser(std::istream &stream) : m_in(stream) {}
+        explicit parser(
+            std::istream &stream,
+            symbol_name const &name
+        ) :
+            m_program_name(name.empty() ? symbol_name{"NoName"} : name),
+            m_in(stream) {}
 
         // These function templates make returning errors more concise.
         template <typename... Args>
@@ -189,9 +196,6 @@ class parser {
         expected<expression_t> parse_atom();
 
         // Parsing helpers
-        expected<expression_t> parse_arithmetic_function_expression(
-            parameter_list_t const &params
-        );
         expected<array_shape> parse_array_shape();
         expected<dimension> parse_one_dimension();
         expected<io_list_t> parse_io_list();
@@ -227,6 +231,9 @@ class parser {
         expected<bool> end_subprogram();
 
         expected<bool> add_branch_target(statement_number_t number);
+
+        symbol_info find_symbol(symbol_name const &name);
+        void update_symbol(symbol_info symbol);
 
         datatype inferred_type(symbol_info const &symbol) const;
         void infer_type_and_update(symbol_info &symbol);
@@ -321,15 +328,16 @@ class parser {
             return std::make_shared<T>(std::forward<Args>(args)...);
         }
 
+        symbol_name m_program_name;  // used if code doesn't provide one
         std::istream &m_in;
         std::string m_line;
         std::string m_statement;
         std::string::const_iterator m_it;
         program m_program;
         unit m_subprogram;
+        unit m_internal;  // an arithmetic function to be added to m_subprogram
         implicit m_implicit;
         std::map<symbol_name, unsigned> m_common_counts;
-        std::map<symbol_name, arithmetic_function_t> m_arithmetic_functions;
         phase_t m_phase = phase0;
         bool m_current_subprogram_is_main = false;
         statement_number_t m_statement_number = no_statement_number;

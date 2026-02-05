@@ -40,25 +40,25 @@ parser::expected<program> parser::parse_files(
         sources.push_back(source);
     }
     auto stream = std::stringstream{std::move(buffer)};
-    auto parsed = parse_stream(stream);
+
+    // Create a default program name in case the code doesn't have an explicit
+    // PROGRAM statement.
+    auto const program_name =
+        symbol_name{to_upper_ascii(paths.front().stem().string())};
+
+    auto parsed = parse_stream(stream, program_name);
     if (!parsed) return error_of(std::move(parsed));
     auto main_program = std::move(parsed).value();
     main_program.set_source_files(sources);
 
-    // If the program wasn't given a name, use the first source file's name.
-    if (main_program.name().empty()) {
-        auto const &first = paths.front();
-        if (first.has_stem()) {
-            auto const stem = to_upper_ascii(first.stem().string());
-            auto const name = symbol_name{stem};
-            main_program.set_name(name);
-        }
-    }
     return main_program;
 }
 
-parser::expected<program> parser::parse_stream(std::istream &in) {
-    auto p = parser{in};
+parser::expected<program> parser::parse_stream(
+    std::istream &in,
+    symbol_name program_name
+) {
+    auto p = parser{in, program_name};
     return p.parse_statements();
 }
 
@@ -151,7 +151,7 @@ parser::parse_identified_statement(keyword kw, statement_number_t number) {
                 return error("cannot implicitly begin a PROGRAM because only "
                              "one PROGRAM is allowed");
             }
-            auto begin_result = begin_main_subprogram(symbol_name{});
+            auto begin_result = begin_main_subprogram(m_program_name);
             if (!begin_result) return error_of(std::move(begin_result));
             break;
         }
@@ -240,7 +240,8 @@ parser::expected<statement_t> parser::parse_program() {
         return error("multiple PROGRAM statements are not allowed ('{}')",
                      name);
     }
-    auto begin_result = begin_main_subprogram(name);
+    m_program_name = name;  // using provided name instead of default
+    auto begin_result = begin_main_subprogram(m_program_name);
     if (!begin_result) return error_of(std::move(begin_result));
     return nullptr;
 }
@@ -262,18 +263,18 @@ parser::expected<statement_t> parser::parse_function(datatype type) {
     if (!begin_result) return error_of(std::move(begin_result));
 
     // The function name is used for the return value.
-    auto retval = m_subprogram.find_symbol(name);
+    auto retval = find_symbol(name);
     retval.kind = symbolkind::retval;
     retval.type = type;
-    m_subprogram.update_symbol(retval);
+    update_symbol(retval);
 
     // We also add its parameters, but we don't know their types yet.
     auto index = 1u;
     for (auto const &param : params.value()) {
-        auto symbol = m_subprogram.find_symbol(param);
+        auto symbol = find_symbol(param);
         symbol.kind = symbolkind::argument;
         symbol.index = index++;
-        m_subprogram.update_symbol(symbol);
+        update_symbol(symbol);
     }
     return nullptr;
 }
@@ -300,10 +301,10 @@ parser::expected<statement_t> parser::parse_subroutine() {
     // Add the subroutine's parameters.  We don't know their types yet.
     auto index = 1u;
     for (auto const &param : params) {
-        auto symbol = m_subprogram.find_symbol(param);
+        auto symbol = find_symbol(param);
         symbol.kind = symbolkind::argument,
         symbol.index = index++;
-        m_subprogram.update_symbol(symbol);
+        update_symbol(symbol);
     }
     return nullptr;
 }
@@ -325,32 +326,67 @@ parser::expected<statement_t> parser::parse_end() {
 
 parser::expected<statement_t>
 parser::parse_arithmetic_function(symbol_name const &name) {
-    if (m_arithmetic_functions.contains(name)) {
-        return error("cannot re-define arithmetic function '{}'", name);
-    }
-    auto parameters = parse_parameter_list();
-    if (!parameters) return error_of(std::move(parameters));
-    if (parameters.value().empty()) {
-        return error("arithmetic function {} requires at least one parameter",
+    auto params = parse_parameter_list();
+    if (!params) return error_of(std::move(params));
+    if (params.value().empty()) {
+        return error("arithmetic function '{}' requires at least one parameter",
                      name);
     }
     if (!accept('=')) {
         return error("expected '=' in arithmetic function definition");
     }
-    auto definition =
-        parse_arithmetic_function_expression(parameters.value());
-    if (!definition) return error_of(std::move(definition));
+    // To minimize confusion, I'm explicitly calls the find_ and update_symbol
+    // methods of the unit instead of relying are the parser methods.
+    // First make an internal symbol to represent the invokable arithmetic
+    // function.
+    auto internal = m_subprogram.find_symbol(name);
+    if (internal.kind != symbolkind::local) {
+        return error("cannot re-define '{}' as an arithmetic function", name);
+    }
+    internal.kind = symbolkind::internal;
+    internal.type = inferred_type(internal);
+    internal.index = static_cast<unsigned>(params.value().size());
+    m_subprogram.update_symbol(internal);
+    // OK, here we go.  Set up a new unit to represent the arithmetic function.
+    auto afunc = unit{name, m_subprogram.unit_name()};
+    // The same name is used in the afunc unit, but this time for the return
+    // value.
+    auto retval = afunc.find_symbol(name);
+    retval.kind = symbolkind::retval;
+    retval.type = internal.type;
+    afunc.update_symbol(retval);
+    // Now we add the arguments only to afunc.
+    auto index = 0u;
+    for (auto const &param : params.value()) {
+        auto symbol = afunc.find_symbol(param);
+        symbol.kind  = symbolkind::argument;
+        symbol.index = ++index;
+        symbol.type  = inferred_type(symbol);
+        afunc.update_symbol(symbol);
+    }
+    // Make afunc visible to the rest of the parser just long enough to parse
+    // the defining expression.
+    assert(m_internal.empty());
+    using std::swap;
+    swap(m_internal, afunc);
+    auto expr = parse_expression();
+    swap(afunc, m_internal);
+    assert(m_internal.empty());
+    if (!expr) return error_of(std::move(expr));
     if (!at_eol()) {
         return error("unexpected token after arithmetic function definition");
     }
-    auto symbol = m_subprogram.find_symbol(name);
-    symbol.kind = symbolkind::internal;
-    symbol.type = inferred_type(symbol);
-    symbol.index = static_cast<unsigned>(parameters.value().size());
-    m_subprogram.update_symbol(symbol);
-    m_arithmetic_functions[symbol.name] =
-        arithmetic_function_t{name, std::move(parameters).value(),
-                              std::move(definition).value()};
+
+    // The body of the afunc consists of two statements:
+    // (1) assignment of the result to the retval
+    auto lhs = std::make_shared<variable_node>(retval.name);
+    auto assignment =
+        make<assignment_statement>(std::move(lhs), std::move(expr).value());
+    afunc.add_statement(std::move(assignment));
+    // (2) return retval
+    afunc.add_statement(make<return_statement>(retval.name));
+
+    m_subprogram.add_internal(std::move(afunc));
     return nullptr;
 }
 
@@ -368,7 +404,7 @@ parser::expected<statement_t> parser::parse_common() {
         do {
             auto name = parse_identifier();
             if (name.empty()) continue;
-            auto symbol = m_subprogram.find_symbol(name);
+            auto symbol = find_symbol(name);
             symbol.kind = symbolkind::common;
             symbol.comdat = block;
             symbol.index = next_common_count(block);
@@ -392,7 +428,7 @@ parser::expected<statement_t> parser::parse_common() {
                 symbol.shape = shape;
             }
 
-            m_subprogram.update_symbol(symbol);
+            update_symbol(symbol);
         } while (accept(','));
     } while (!at_eol());
 
@@ -410,7 +446,7 @@ parser::expected<statement_t> parser::parse_data() {
         auto data_iter = data_list.value().begin();
         auto const data_end = data_list.value().end();
         for (auto const &item : variable_list.value()) {
-            auto symbol = m_subprogram.find_symbol(item.variable);
+            auto symbol = find_symbol(item.variable);
             symbol.type = inferred_type(symbol);
             if (symbol.kind == symbolkind::common) {
                 // We let this go with just a warning because Adventure relies
@@ -464,7 +500,7 @@ parser::expected<statement_t> parser::parse_data() {
                     }
                 }
             }
-            m_subprogram.update_symbol(symbol);
+            update_symbol(symbol);
         }
         if (data_iter != data_end) {
             return error("more values than variables in DATA statement");
@@ -486,13 +522,13 @@ parser::expected<statement_t> parser::parse_dimension() {
             return error("array {} requires more than {} elements",
                          variable, array_size_limit);
         }
-        auto symbol = m_subprogram.find_symbol(variable);
+        auto symbol = find_symbol(variable);
         if (symbol.shape == shape.value()) continue;
         if (!symbol.shape.empty()) {
             return error("attempted to re-dimension {}", variable);
         }
         symbol.shape = std::move(shape).value();
-        m_subprogram.update_symbol(std::move(symbol));
+        update_symbol(std::move(symbol));
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after DIMENSION statement");
     return nullptr;
@@ -502,10 +538,10 @@ parser::expected<statement_t> parser::parse_external() {
     do {
         auto const name = parse_identifier();
         if (name.empty()) continue;
-        auto symbol = m_subprogram.find_symbol(name);
+        auto symbol = find_symbol(name);
         symbol.kind = symbolkind::external;
         symbol.type = datatype::none;
-        m_subprogram.update_symbol(symbol);
+        update_symbol(symbol);
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after EXTERNAL statement");
     return nullptr;
@@ -521,7 +557,7 @@ parser::expected<statement_t> parser::parse_format(statement_number_t number) {
     if (!at_eol()) return error("unexpected token after FORMAT statement");
 
     auto const name = symbol_name(number);
-    auto symbol = m_subprogram.find_symbol(name);
+    auto symbol = find_symbol(name);
     if (symbol.kind == symbolkind::label) {
         return error("statement {} cannot be both a FORMAT and branch target; "
                      "branch targets must be executable statements", number);
@@ -529,7 +565,7 @@ parser::expected<statement_t> parser::parse_format(statement_number_t number) {
     assert(symbol.type == datatype::unknown);
     symbol.kind = symbolkind::format;
     symbol.type = datatype::none;
-    m_subprogram.update_symbol(symbol);
+    update_symbol(symbol);
     m_subprogram.add_format(name, std::move(fields).value());
     return nullptr;
 }
@@ -588,14 +624,14 @@ parser::expected<statement_t> parser::parse_type_specification(datatype type) {
         if (variable.empty()) {
             return error("expected variable name in type specification");
         }
-        auto symbol = m_subprogram.find_symbol(variable);
+        auto symbol = find_symbol(variable);
         if (symbol.type == type) continue;
         if (symbol.type != datatype::unknown) {
             return error("previous type of {} conflicts with this type "
                          "specification", variable);
         }
         symbol.type = type;
-        m_subprogram.update_symbol(std::move(symbol));
+        update_symbol(std::move(symbol));
     } while (accept(','));
     if (!at_eol()) return error("unexpected token after type specification");
     return nullptr;
@@ -604,13 +640,13 @@ parser::expected<statement_t> parser::parse_type_specification(datatype type) {
 parser::expected<statement_t> parser::parse_assignment() {
     auto const name = parse_identifier();
     if (name.empty()) return error("expected lvalue");
-    auto symbol = m_subprogram.find_symbol(name);
+    auto symbol = find_symbol(name);
 
     if (match('(') && symbol.shape.empty()) {
-        // Looks like a arithmetic function definition.
+        // Looks like an arithmetic function definition.
         if (m_phase > phase3) {
             return error(
-                "arithmetic function {} must be defined before the first "
+                "arithmetic function '{}' must be defined before the first "
                 "executable statement\n", name);
         }
         return parse_arithmetic_function(name);
@@ -688,13 +724,13 @@ parser::expected<statement_t> parser::parse_call() {
     }
     if (!at_eol()) return error("unexpected token after CALL statement");
 
-    auto symbol = m_subprogram.find_symbol(name);
+    auto symbol = find_symbol(name);
     if (!m_subprogram.has_symbol(name)) {
         // We infer that it's a subroutine.
         symbol.type = datatype::none;
         symbol.kind = symbolkind::subprogram;
         symbol.index = static_cast<unsigned>(arguments.size());
-        m_subprogram.update_symbol(symbol);
+        update_symbol(symbol);
     }
 
     switch (symbol.kind) {
@@ -705,10 +741,10 @@ parser::expected<statement_t> parser::parse_call() {
             return make<call_statement>(name, std::move(arguments));
         case symbolkind::argument:
             symbol.type = datatype::subptr;
-            m_subprogram.update_symbol(symbol);
+            update_symbol(symbol);
             return make<indirect_call_statement>(name, std::move(arguments));
         case symbolkind::internal:
-            return error("cannot CALL {} because it's an arithmetic function",
+            return error("cannot CALL '{}' because it's an arithmetic function",
                          name);
         default:
             break;
@@ -821,7 +857,7 @@ parser::expected<statement_t> parser::parse_open() {
     // and 'SEQIN' for 'SEQUENTIAL'.)
     // https://docs.oracle.com/cd/E19957-01/805-4939/6j4m0vnaf/index.html
     if (!accept('(')) {
-        return error("expected parenthesized parameters list after OPEN");
+        return error("expected parenthesized parameter list after OPEN");
     }
     auto const bookmark = position();
     auto const unitkey = parse_open_keyword();
@@ -1058,7 +1094,7 @@ parser::expected<expression_t> parser::parse_atom() {
     if (match_letter()) {
         auto const name = parse_identifier();
         if (name.empty()) return error("expected identifier in expression");
-        auto symbol = m_subprogram.find_symbol(name);
+        auto symbol = find_symbol(name);
 
         if (!match('(')) {  // variables and externals
             infer_type_and_update(symbol);
@@ -1089,7 +1125,7 @@ parser::expected<expression_t> parser::parse_atom() {
             symbol.type = inferred_type(symbol);
             assert(symbol.index == 0);
             symbol.index = static_cast<unsigned>(args.size());
-            m_subprogram.update_symbol(symbol);
+            update_symbol(symbol);
         }
         if (symbol.kind == symbolkind::subprogram &&
             symbol.type == datatype::none
@@ -1099,41 +1135,19 @@ parser::expected<expression_t> parser::parse_atom() {
         }
         if (args.size() != symbol.index) {
             return error("'{}' requires {} argument{}, but {} provided",
-                symbol.name, symbol.index, symbol.index != 1 ? "s" : "",
-                args.size());
+                symbol.name, symbol.index, plural(symbol.index), args.size());
         }
         if (symbol.kind == symbolkind::subprogram) {
             return std::make_shared<function_invocation_node>(name, args);
         } else if (symbol.kind == symbolkind::internal) {
-            assert(m_arithmetic_functions.contains(symbol.name));
-            return std::make_shared<inlined_internal_node>(
-                m_arithmetic_functions[symbol.name], args);
+            return std::make_shared<function_invocation_node>(
+                m_subprogram.unit_name(), symbol.name, args);
         }
         return error("syntax error in expression near '{}'", name);
     }
     auto constant = parse_constant();
     if (!constant) return error_of(std::move(constant));
     return std::make_shared<constant_node>(std::move(constant).value().value);
-}
-
-parser::expected<expression_t> parser::parse_arithmetic_function_expression(
-    parameter_list_t const &params
-) {
-    // In theory, any parameter of an arithmetic function may shadow another
-    // symbol that's been declared.  They need to be in scope only while parsing
-    // the expression that defines the function.  So we temporarily add them as
-    // shadows, and them pop them right back off.  Any other variables
-    // referenced in the arithmetic function are scoped to the unit.
-    for (auto const &param : params) {
-        auto symbol = symbol_info{};
-        symbol.name = param;
-        symbol.kind = symbolkind::shadow;
-        symbol.type = inferred_type(symbol);
-        m_subprogram.push_shadow(std::move(symbol));
-    }
-    auto const definition = parse_expression();
-    m_subprogram.pop_shadows();
-    return definition;
 }
 
 parser::expected<array_shape> parser::parse_array_shape() {
@@ -1181,7 +1195,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
     if (accept('(')) {  // should be indexed array expression and index control
         auto const array = parse_identifier();
         if (array.empty()) return error("expected array name for i/o item");
-        auto const symbol = m_subprogram.find_symbol(array);
+        auto const symbol = find_symbol(array);
         if (symbol.shape.empty()) {
             return error("expected array name, saw '{}'", array);
         }
@@ -1206,7 +1220,7 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
     if (name.empty()) {
         return error("expected variable name in input-output list");
     }
-    auto symbol = m_subprogram.find_symbol(name);
+    auto symbol = find_symbol(name);
     infer_type_and_update(symbol);
     if (symbol.kind == symbolkind::subprogram ||
         symbol.kind == symbolkind::external
@@ -1223,10 +1237,10 @@ parser::expected<io_list_item> parser::parse_io_list_item() {
 
     // Implicitly apply to the entire array.
     auto const induction_name = symbol_name{"_I_"};
-    auto induction_symbol = m_subprogram.find_symbol(induction_name);
+    auto induction_symbol = find_symbol(induction_name);
     if (induction_symbol.type == datatype::unknown) {
         induction_symbol.type = datatype::INTEGER;
-        m_subprogram.update_symbol(std::move(induction_symbol));
+        update_symbol(std::move(induction_symbol));
     }
     auto const induction = std::make_shared<variable_node>(induction_name);
     return io_list_item{
@@ -1242,7 +1256,7 @@ parser::expected<index_control_t> parser::parse_index_control() {
     auto const index = parse_identifier();
     if (index.empty()) return error("missing index variable");
 
-    auto symbol = m_subprogram.find_symbol(index);
+    auto symbol = find_symbol(index);
     if (symbol.type == datatype::unknown) {
         symbol.type = datatype::INTEGER;
     }
@@ -1255,7 +1269,7 @@ parser::expected<index_control_t> parser::parse_index_control() {
         return error("index cannot be a subprogram");
     }
     if (!symbol.shape.empty()) return error("index cannot be an array");
-    m_subprogram.update_symbol(symbol);
+    update_symbol(symbol);
 
     if (!accept('=')) return error("expected '=' in index control");
     auto init = parse_expression();
@@ -1361,16 +1375,18 @@ parser::expected<expression_t> parser::parse_argument() {
     if (!name.empty() && (match(',') || match(')'))) {
         // It's just a variable or external, so it has an address we can use as
         // the argument expression.
-        auto symbol = m_subprogram.find_symbol(name);
+        auto symbol = find_symbol(name);
         if (symbol.type == datatype::unknown) {
             infer_type_and_update(symbol);
         }
         switch (symbol.kind) {
             case symbolkind::external:
                 return std::make_shared<external_node>(symbol.name);
+            case symbolkind::temporary:
+                assert(!"suspicious!");
+                /*FALLTHROUGH*/
             case symbolkind::common:
             case symbolkind::local:
-            case symbolkind::shadow:
             case symbolkind::argument:
             case symbolkind::retval:
                 return std::make_shared<variable_node>(symbol.name);
@@ -1427,7 +1443,7 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
     if (accept('(')) {  // should be indexed array expression and index control
         auto const array = parse_identifier();
         if (array.empty()) return error("expected array name");
-        auto const symbol = m_subprogram.find_symbol(array);
+        auto const symbol = find_symbol(array);
         if (symbol.shape.empty()) {
             return error("expected array name, saw '{}'", array);
         }
@@ -1452,7 +1468,7 @@ parser::expected<variable_list_item_t> parser::parse_variable_list_item() {
     if (name.empty()) {
         return error("expected variable name in variable list");
     }
-    auto symbol = m_subprogram.find_symbol(name);
+    auto symbol = find_symbol(name);
     infer_type_and_update(symbol);
     if (symbol.kind == symbolkind::subprogram ||
         symbol.kind == symbolkind::external
@@ -1490,7 +1506,7 @@ parser::parse_constant_index_control() {
     auto const induction = parse_identifier();
     if (induction.empty()) return error("missing induction variable");
 
-    auto symbol = m_subprogram.find_symbol(induction);
+    auto symbol = find_symbol(induction);
     if (symbol.type == datatype::unknown) {
         symbol.type = datatype::INTEGER;
     }
@@ -1503,7 +1519,7 @@ parser::parse_constant_index_control() {
         return error("induction variable cannot be a subprogram");
     }
     if (!symbol.shape.empty()) return error("index cannot be an array");
-    m_subprogram.update_symbol(symbol);
+    update_symbol(symbol);
 
     if (!accept('=')) return error("expected '=' in index control");
     auto k0 = parse_constant();
@@ -1750,7 +1766,7 @@ parser::expected<bool> parser::add_branch_target(statement_number_t number) {
     assert(number != no_statement_number);
     assert(phase1 <= m_phase && m_phase <= phase4);
     auto symbol =
-        m_subprogram.find_symbol(symbol_name{static_cast<unsigned>(number)});
+        find_symbol(symbol_name{static_cast<unsigned>(number)});
     if (symbol.kind == symbolkind::format) {
         return error("statement {} cannot be a branch target and a FORMAT; "
                      "a FORMAT statement is not executable", number);
@@ -1758,7 +1774,7 @@ parser::expected<bool> parser::add_branch_target(statement_number_t number) {
     if (symbol.kind != symbolkind::label) {
         symbol.kind = symbolkind::label;
         symbol.type = datatype::none;
-        m_subprogram.update_symbol(symbol);
+        update_symbol(symbol);
     }
     return true;
 }
@@ -1769,7 +1785,6 @@ parser::expected<bool> parser::begin_main_subprogram(symbol_name const &name) {
     m_subprogram = unit{name};
     m_implicit.reset();
     m_common_counts.clear();
-    m_arithmetic_functions.clear();
     m_current_subprogram_is_main = true;
     m_phase = phase1;
     return true;
@@ -1789,7 +1804,6 @@ parser::expected<bool> parser::begin_subprogram(symbol_name const &name) {
     m_subprogram = unit{name};
     m_implicit.reset();
     m_common_counts.clear();
-    m_arithmetic_functions.clear();
     m_phase = phase1;
     return true;
 }
@@ -1801,6 +1815,22 @@ parser::expected<bool> parser::end_subprogram() {
     return true;
 }
 
+symbol_info parser::find_symbol(symbol_name const &name) {
+    if (m_internal.empty()) return m_subprogram.find_symbol(name);
+    if (m_internal.has_symbol(name)) return m_internal.find_symbol(name);
+    if (m_subprogram.has_symbol(name)) {
+        auto symbol = m_subprogram.find_symbol(name);
+        m_internal.update_symbol(symbol);  // copy from parent to internal
+        return symbol;
+    }
+    return m_internal.find_symbol(name);  // this is the case I'm not sure about
+}
+
+void parser::update_symbol(symbol_info symbol) {
+    if (!m_internal.empty()) m_internal.update_symbol(symbol);
+    m_subprogram.update_symbol(std::move(symbol));
+}
+
 datatype parser::inferred_type(symbol_info const &symbol) const {
     return
         symbol.type == datatype::unknown ? m_implicit.type_for(symbol.name)
@@ -1810,7 +1840,7 @@ datatype parser::inferred_type(symbol_info const &symbol) const {
 void parser::infer_type_and_update(symbol_info &symbol) {
     if (symbol.type == datatype::unknown) {
         symbol.type = m_implicit.type_for(symbol.name);
-        m_subprogram.update_symbol(symbol);
+        update_symbol(symbol);
     }
 }
 
@@ -1818,7 +1848,7 @@ void parser::infer_types() {
     auto unknowns = m_subprogram.extract_symbols(has_unknown_type);
     for (auto &symbol : unknowns) {
         symbol.type = m_implicit.type_for(symbol.name);
-        m_subprogram.update_symbol(std::move(symbol));
+        update_symbol(std::move(symbol));
     }
 }
 

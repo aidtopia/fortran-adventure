@@ -39,12 +39,12 @@ enum class symbolkind {
     common,     // variable in a common block
     argument,   // variable for an argument passed in to the subprogram
     retval,     // variable for the return value of the function
+    temporary,  // variable to hold a value without an address
     subprogram, // subroutine or function
     internal,   // arithmetic function, invokable like a function
     external,   // variable holding a pointer to a subprogram
     label,      // statement number of a branch target
-    format,     // statement number of a FORMAT specification
-    shadow      // parameter in an arithmetic function definition
+    format      // statement number of a FORMAT specification
 };
 
 class symbol_name {
@@ -118,7 +118,7 @@ struct symbol_info {
     symbol_name name;
     symbolkind  kind = symbolkind::local;
     symbol_name comdat;
-    unsigned    index = 0;  // see note below
+    unsigned    index = 0;  // overloaded, see note below
     datatype    type = datatype::unknown;
     unsigned    address = 0;
     array_shape shape;
@@ -127,22 +127,22 @@ struct symbol_info {
 
     // NOTE the meaning of the index field above depends on the kind:
     //  symbolkind::    index is
-    //      local       not needed
+    //      local       not needed; must be 0
     //      common      variable's relative position in the common block
     //      argument    argument's position in the arg list
-    //      retval      not needed
+    //      retval      not needed; must be 0
+    //      temporary   not needed; must be 0
     //      subprogram  number of arguments needed to call or invoke
     //      internal    number of arguments needed to invoke
-    //      external    not needed
-    //      label       not needed
-    //      format      not needed
-    //      shadow      not needed, but could be set like argument index
-    //
+    //      external    not needed; must be 0
+    //      label       not needed; must be 0
+    //      format      not needed; must be 0
+
     // `referenced` means the symbol is assigned to (other than initial data),
     // read from, called, invoked, or ref-passed.  For labels, it means it is
-    // the target of a GOTO statement.  Any symbol that's not referenced in the
-    // program will be dropped in translation (to avoid warnings from the C
-    // compiler).
+    // the target of a reachable GOTO statement.  Any symbol that's not
+    // referenced in the program will be dropped in translation to avoid
+    // warnings from the C compiler).
 };
 
 // Program core memory requirement, in machine words, for the symbol if it's a
@@ -241,12 +241,12 @@ struct std::formatter<aid::fortran::symbolkind> :
             case common:        return "common";
             case argument:      return "argument";
             case retval:        return "retval";
+            case temporary:     return "temporary";
             case subprogram:    return "subprogram";
             case internal:      return "internal";
             case external:      return "external";
             case label:         return "label";
             case format:        return "FORMAT";
-            case shadow:        return "shadow";
             default:            return "* update symbolkind formatter *";
         }
     }

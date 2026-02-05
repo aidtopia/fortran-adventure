@@ -43,6 +43,7 @@ unsigned core_size(symbol_info const &symbol) {
         case symbolkind::common:
         case symbolkind::argument:
         case symbolkind::retval:
+        case symbolkind::temporary:
             return core_size(symbol.type) * array_size(symbol.shape);
 
         case symbolkind::external:
@@ -51,10 +52,6 @@ unsigned core_size(symbol_info const &symbol) {
         case symbolkind::subprogram:
         case symbolkind::internal:
         case symbolkind::label:
-            return 0;
-
-        case symbolkind::shadow:
-            assert(!"suspicious!");
             return 0;
 
         default:

@@ -25,8 +25,8 @@ class unit {
 
         // Arithmetic functions are implemented as "internal" subprograms within
         // the parent's scope.
-        explicit unit(symbol_name name, unit const &parent)
-            : m_unit_name(name), m_parent_name(parent.unit_name()) {}
+        explicit unit(symbol_name name, symbol_name parent)
+            : m_unit_name(name), m_parent_name(parent) {}
 
         ~unit() = default;
         unit(unit &&rhs) noexcept = default;
@@ -34,22 +34,21 @@ class unit {
         unit(unit const &rhs) = delete;
         unit &operator=(unit const &rhs) = delete;
 
-        bool empty() const { return m_symbols.empty() && m_code.empty(); }
+        bool empty() const {
+            return m_unit_name.empty() && m_symbols.empty() && m_code.empty();
+        }
         bool is_reachable() const { return m_reachable; }
 
         // The name of this unit (i.e., the program, subroutine, or function).
         symbol_name unit_name() const { return m_unit_name; }
-        void set_unit_name(symbol_name const &name) { m_unit_name = name; }
+        void set_unit_name(symbol_name const &name);
+        symbol_name parent_name() const { return m_parent_name; }
+        void set_parent_name(symbol_name const &name);
         std::string full_name() const;
 
         // Replaces (or adds) the symbol record.
         void update_symbol(symbol_info const &symbol);
         void update_symbol(symbol_info &&symbol);
-
-        // Arithmetic function definition parameters are temporary symbols that
-        // might shadow an actual symbol in the unit.
-        void push_shadow(symbol_info &&symbol);
-        void pop_shadows();
 
         // A shortcut for ensuring the symbol's `referenced` flag is set.
         void mark_symbol_referenced(symbol_name const &name);
@@ -74,6 +73,11 @@ class unit {
 
         void add_statement(statement_t statement);
         statement_block const &code() const { return m_code; }
+
+        // Internal units are used to implement arithmetic functions.
+        void add_internal(unit &&internal);
+        std::span<const unit> internals() const { return m_internals; }
+        std::span<unit> internals() { return m_internals; }
 
         void add_subroutine_pointer_type(std::size_t arg_count);
         void add_function_pointer_type(std::size_t arg_count);
@@ -104,12 +108,11 @@ class unit {
         // Maps the name of a symbolkind::label to an index in m_code.
         using branch_target_table = std::map<symbol_name, std::size_t>;
 
-        using internal_table = std::map<symbol_name, unit>;
+        using internal_table = std::vector<unit>;
 
         symbol_name  m_unit_name;
         symbol_name  m_parent_name;  // if this is internal, else empty
         symbol_table m_symbols;
-        symbol_table m_shadows;  // temporary symbols that might shadow others
         format_table m_formats;
         statement_block m_code;
         branch_target_table m_targets;
@@ -147,8 +150,17 @@ inline bool is_referenced_format(symbol_info const &a) {
 inline bool is_referenced_local(symbol_info const &a) {
     return a.kind == symbolkind::local && a.referenced;
 }
+inline bool is_referenced_local_or_temp(symbol_info const &a) {
+    return a.referenced && (
+        a.kind == symbolkind::local ||
+        a.kind == symbolkind::temporary
+    );
+}
 inline bool is_referenced_subprogram(symbol_info const &a) {
     return a.kind == symbolkind::subprogram && a.referenced;
+}
+inline bool is_referenced_temporary(symbol_info const &a) {
+    return a.kind == symbolkind::temporary && a.referenced;
 }
 inline bool has_unknown_type(symbol_info const &a) {
     return a.type == datatype::unknown;
@@ -171,7 +183,6 @@ inline bool by_name(symbol_info const &a, symbol_info const &b) {
     if (a.name > b.name) return false;
     return false;
 };
-
 
 }
 

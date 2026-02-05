@@ -352,6 +352,10 @@ std::string c_generator::generate_static_initialization(program const &prog) {
 }
 
 std::string c_generator::generate_unit(unit const &u) {
+    auto arithmetic_functions = ""s;
+    for (auto const &internal : u.internals()) {
+        arithmetic_functions.append(generate_unit(internal));
+    }
     auto const signature = generate_function_signature(u);
     auto const retval    = generate_return_value(u);
     auto const dummies   = generate_dummies(u);
@@ -362,7 +366,11 @@ std::string c_generator::generate_unit(unit const &u) {
     auto const formats   = generate_format_specifications(u);
     auto const code      = generate_statements(u);
     return
-        std::format("\n{} {{\n{}{}{}{}{}{}{}{}}}\n",
+        std::format("{}\n"
+                    "{} {{\n"
+                    "{}{}{}{}{}{}{}{}"
+                    "}}\n",
+            arithmetic_functions,
             signature, retval, dummies, commons, locals, externals, typedefs,
             formats, code);
 }
@@ -371,9 +379,9 @@ std::string c_generator::generate_function_signature(unit const &u) {
     auto result = std::string{};
     auto const retval = u.extract_symbols(is_return_value);
     if (retval.empty()) {
-        result += std::format("void sub{}(", u.unit_name());
+        result += std::format("void sub{}(", u.full_name());
     } else {
-        result += std::format("word_t fn{}(", u.unit_name());
+        result += std::format("word_t fn{}(", u.full_name());
     }
     auto const parameters = u.extract_symbols(is_argument, by_index);
     for (auto const &param : parameters) {
@@ -417,7 +425,7 @@ std::string c_generator::generate_dummies(unit const &u) {
 std::string c_generator::generate_common_variable_declarations(unit const &u) {
     auto const commons = u.extract_symbols(is_common, by_block_index);
     if (commons.empty()) return {};
-    auto result = " // Common variables\n"s;
+    auto result = std::format(" // Common variable{}\n", plural(commons));
     for (auto const &common : commons) {
         if (common.referenced) {
             result += generate_variable_definition(common);
@@ -427,10 +435,9 @@ std::string c_generator::generate_common_variable_declarations(unit const &u) {
 }
 
 std::string c_generator::generate_local_variable_declarations(unit const &u) {
-    auto const locals = u.extract_symbols(is_referenced_local);
+    auto const locals = u.extract_symbols(is_referenced_local_or_temp);
     if (locals.empty()) return {};
-    auto result = std::format(" // Local variable{}\n",
-                              locals.size() != 1 ? "s" : "");
+    auto result = std::format(" // Local variable{}\n", plural(locals));
     for (auto const &local : locals) {
         result += generate_variable_definition(local);
     }
@@ -441,7 +448,7 @@ std::string c_generator::generate_format_specifications(unit const &u) {
     auto const labels = u.extract_symbols(is_referenced_format);
     if (labels.empty()) return {};
     auto result = std::format(" // IO format specification{}\n",
-                              labels.size() != 1 ? "s" : "");
+                              plural(labels));
     for (auto const &label : labels) {
         if (!label.referenced) continue;
         auto const fields = u.find_format(label.name);
@@ -454,8 +461,7 @@ std::string c_generator::generate_format_specifications(unit const &u) {
 std::string c_generator::generate_external_declarations(unit const &u) {
     auto const externals = u.extract_symbols(is_referenced_external);
     if (externals.empty()) return {};
-    auto result = std::format(" // External subprogram{}\n",
-                              externals.size() != 1 ? "s" : "");
+    auto result = std::format(" // External subprogram{}\n", plural(externals));
     for (auto const &external : externals) {
         auto const prefix = external.type == datatype::none ? "sub" : "fn";
         result +=
@@ -473,7 +479,7 @@ std::string c_generator::generate_subprogram_typedefs(unit const &u) {
     if ((r|f) == 0) return {};
     auto result =
         std::format(" // Function pointer type{} for indirect calls\n",
-                    std::popcount(r) + std::popcount(f) != 1 ? "s" : "");
+                    plural(std::popcount(r) + std::popcount(f)));
     auto args = std::string{};
     for (auto i = 0u; (r|f) != 0; r >>= 1, f >>= 1, ++i) {
         if (r & 1) {
@@ -517,6 +523,7 @@ std::string c_generator::generate_variable_definition(symbol_info const &var) {
         comment += std::format(" return value");
     }
     if (!comment.empty()) comment = " //"s + comment;
+//    assert(var.address != 0 && "must assign address before code generation");
     return std::format(" const addr_t v{:<6} = {:5};{}\n",
                        var.name, var.address, comment);
 }

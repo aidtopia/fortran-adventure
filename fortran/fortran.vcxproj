@@ -152,6 +152,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="cgenerator.cpp" />
+    <ClCompile Include="comdats.cpp" />
     <ClCompile Include="datalist.cpp" />
     <ClCompile Include="expressions.cpp" />
     <ClCompile Include="fortran.cpp" />
@@ -165,8 +166,8 @@
     <ClCompile Include="utility.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="arithmeticfunction.h" />
     <ClInclude Include="cgenerator.h" />
+    <ClInclude Include="comdats.h" />
     <ClInclude Include="datalist.h" />
     <ClInclude Include="expression.h" />
     <ClInclude Include="expressions.h" />
