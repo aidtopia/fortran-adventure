@@ -177,13 +177,16 @@ std::string c_generator::generate_builtins(program const &prog) {
 
 std::string c_generator::generate_prototypes(program const &prog) {
     auto prototypes = std::string{};
+    auto count = 0uz;
     for (auto const &sub : prog) {
         if (!sub.is_reachable()) continue;
         prototypes += std::format("{};\n", generate_function_signature(sub));
+        ++count;
     }
     if (prototypes.empty()) return {};
-    return "\n// Function prototypes for the program's subprograms\n"s +
-           prototypes;
+    return
+        std::format("\n// Prototype{0} for the program's subprogram{0}\n{1}",
+                    plural(count), prototypes);
 }
 
 std::string c_generator::generate_main_function(program const &prog) {
@@ -353,6 +356,15 @@ std::string c_generator::generate_static_initialization(program const &prog) {
 
 std::string c_generator::generate_unit(unit const &u) {
     auto arithmetic_functions = ""s;
+    // Check each and _every_ internal unit to see if it's referenced.  Do not
+    // rely on the internal symbols, as those will have only the ones invoked
+    // directly by the current unit.  If an internal invokes another internal,
+    // there won't be a corresponding symbol for the nested one in the current
+    // unit.
+    //
+    // TODO:  Ensure the order is sufficient if there are nested internal calls.
+    // This works now because Adventure defines dependent arithmetic functions
+    // first, and u.m_internals preserves that order.
     for (auto const &internal : u.internals()) {
         arithmetic_functions.append(generate_unit(internal));
     }

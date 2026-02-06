@@ -4,8 +4,9 @@ C   SCRATCH PROJECT TO CHECK OUT THE TRANSLATOR
       IMPLICIT INTEGER(A-Z)
       SUM(X,Y)=X+Y
       PROD(X,Y)=X*Y
+      ZORK(X,Y)=SUM(PROD(X,Y), 1)
       T=3
-      Q=SUM(PROD(2,T), PROD(2*T,2))
+      Q=ZORK(2,T)
       TYPE 1,Q
 1     FORMAT(' Q:', I5)
       STOP

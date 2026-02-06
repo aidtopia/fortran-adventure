@@ -78,6 +78,7 @@ class unit {
         void add_internal(unit &&internal);
         std::span<const unit> internals() const { return m_internals; }
         std::span<unit> internals() { return m_internals; }
+        unit *find_internal(symbol_name name);
 
         void add_subroutine_pointer_type(std::size_t arg_count);
         void add_function_pointer_type(std::size_t arg_count);
@@ -95,6 +96,9 @@ class unit {
         void print_symbol_table(std::ostream &out) const;
 
     private:
+        void mark_reachable_code();
+        void mark_reachable_internals();
+
         static std::string format_dimension(dimension const &d);
         static std::string format_word(machine_word_t w, datatype type);
 
@@ -146,6 +150,9 @@ inline bool is_referenced_external(symbol_info const &a) {
 }
 inline bool is_referenced_format(symbol_info const &a) {
     return a.kind == symbolkind::format && a.referenced;
+}
+inline bool is_referenced_internal(symbol_info const &a) {
+    return a.kind == symbolkind::internal && a.referenced;
 }
 inline bool is_referenced_local(symbol_info const &a) {
     return a.kind == symbolkind::local && a.referenced;

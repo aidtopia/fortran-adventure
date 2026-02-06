@@ -97,6 +97,13 @@ void unit::add_internal(unit &&internal) {
     m_internals.push_back(std::move(internal));
 }
 
+unit *unit::find_internal(symbol_name name) {
+    auto const it = std::find_if(m_internals.begin(), m_internals.end(),
+        [&name] (unit const &u) { return u.unit_name() == name; });
+    if (it == m_internals.end()) return nullptr;
+    return &*it;
+}
+
 void unit::add_subroutine_pointer_type(std::size_t arg_count) {
     assert(arg_count < sizeof(m_subroutine_types)*CHAR_BIT);
     m_subroutine_types |= (1u << arg_count);
@@ -112,6 +119,11 @@ void unit::mark_reachable() {
     m_reachable = true;
     if (m_code.empty()) return;
 
+    mark_reachable_code();
+    mark_reachable_internals();
+}
+
+void unit::mark_reachable_code() {
     auto is_branch_target = [] (symbol_info const &s) {
         return s.kind == symbolkind::label && s.referenced;
     };
@@ -141,12 +153,40 @@ void unit::mark_reachable() {
             }
         }
     }
+}
 
+void unit::mark_reachable_internals() {
     // TODO:  Generalize the function for finding all of the reachable units
     // for a program so we can re-use it here to find all of the reachable
     // internal units.  For now, though, ...
-    for (auto &internal : m_internals) {
-        internal.mark_reachable();
+
+    // This works, but it's a bit contorted.  The top unit contains all of the
+    // internal units, but the invocations make be nested.  So there's an extra
+    // level of recursion that's not doing anything useful.
+    // If unit ZERZ invokes internal FOO which, in turn, invokes internal BAR,
+    // then ZERZ contains _units_ FOO and BAR, but its symbol table will show
+    // only FOO as referenced.
+    auto processed = std::set<symbol_name>{};
+    auto to_process = std::set<symbol_name>{};
+    for (auto const &i : extract_symbols(is_referenced_internal)) {
+        to_process.insert(i.name);
+    }
+
+    while (!to_process.empty()) {
+        auto const this_round = to_process;  // copy to avoid iter invalidation
+        for (auto name : this_round) {
+            to_process.erase(name);
+            processed.insert(name);
+            if (auto sub = find_internal(name); sub) {
+                sub->mark_reachable();
+                // Add newly referenced callees.
+                for (auto const &callee : sub->extract_symbols(is_referenced_internal)) {
+                    if (!processed.contains(callee.name)) {
+                        to_process.insert(callee.name);
+                    }
+                }
+            }
+        }
     }
 }
 
