@@ -1136,7 +1136,6 @@ void host_init(void) {
         mode &= ~ENABLE_ECHO_INPUT;
         mode &= ~ENABLE_LINE_INPUT;
         mode &= ~ENABLE_INSERT_MODE;
-        mode &= ~ENABLE_PROCESSED_INPUT;
         SetConsoleMode(hIn, mode);
     }
 
@@ -1176,6 +1175,8 @@ char host_endianness() {
     return '?';
 }
 
+NORETURN void host_exit(int status) { exit(status); }
+
 enum {
     KEY_UNKNOWN     = -1,
     KEY_BS          = 0x08,
@@ -1208,11 +1209,21 @@ enum {
 
 int host_keypress(bool upcase) {
 #ifdef _WIN32
-    // On Windows, use __getch to avoid delayed delivery of '\r'.
+    // On Windows, use _getch to avoid delayed delivery of '\r'.
     int c = _getch();
+
+    if (c == '\x03') {
+        // _getch bypasses normal Ctrl+C processing regardless of the
+        // ENABLE_INPUT_PROCESSING console mode.  Instead of raising SIGINT or
+        // aborting, we're going to do a regular exit to allow the host_uninit
+        // atexit handler to restore the console mode.
+        fputs("^C\r\n", stdout);
+        host_exit(3);
+    }
+
     if (c == 0xE0) {
-        // When using _getch(), special keys are returned as 0xE0 followed by a
-        // second character.  Mapping determined empirically.
+        // When using _getch(), arrow and function keys generate 0xE0 followed
+        // by a second character.  Mapping determined empirically.
         switch (_getch()) {
             case ';': return KEY_F1;
             case '<': return KEY_F2;
@@ -1469,8 +1480,6 @@ bool host_loadcore(const char *file_name) {
     }
     return success;
 }
-
-NORETURN void host_exit(int status) { exit(status); }
 
 void host_pause(const char *message) {
     do {
