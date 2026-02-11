@@ -194,8 +194,8 @@ std::string c_generator::generate_main_function(program const &prog) {
 bool offer_to_dump_core(void) {{
     io_selectformat("'0ENTER FILE NAME TO SAVE CORE IMAGE: ',$");
     io_output(0, 0);
-    char fname[260+1] = "";
-    if (fgets(fname, sizeof(fname), stdin) == NULL) return false;
+    char fname[260+1];
+    host_input(fname, sizeof(fname), false);
     host_tidyfname(fname, sizeof(fname), ".DMP");
     if (*fname == '\0') {{
         io_selectformat("' EXITING WITHOUT SAVING CORE IMAGE.'");
@@ -234,11 +234,11 @@ int main(int argc, const char *argv[]) {{
                 case 'H': case 'h':
                 case '?':           usage(); return 0;
                 default:
-                    fprintf(stderr, "ignoring unrecognized option: %s\n", arg);
+                    fprintf(stderr, "\nignoring unrecognized option: %s\r", arg);
                     break;
             }}
         }} else {{
-            fprintf(stderr, "ignoring argument: %s\n", arg);
+            fprintf(stderr, "\nignoring argument: %s\r", arg);
         }}
     }}
     if (core_name == NULL || *core_name == '\0' || !host_loadcore(core_name)) {{
@@ -542,10 +542,15 @@ std::string c_generator::generate_variable_definition(symbol_info const &var) {
 
 constexpr std::string_view c_generator::external_dependencies() {
     return R"(#define __STDC_WANT_LIB_EXT1__ 1
-#include <assert.h>
-#include <ctype.h>
+#if _WIN32
+#include <Windows.h>
+#include <conio.h>
 #include <fcntl.h>
 #include <io.h>
+#endif
+
+#include <assert.h>
+#include <ctype.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -566,8 +571,25 @@ constexpr std::string_view c_generator::external_dependencies() {
 #endif
 
 #ifdef _MSC_VER
-#pragma warning(disable:4709, justification:"intentional pattern: `core[((i=x),i)]`")
+#pragma warning(disable:4709, justification:"common pattern: `core[((i=x),i)]`")
 #endif
+
+#if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
+    #define FOPEN(STREAM, NAME, MODE) \
+        fopen_s(&(STREAM), (NAME), (MODE))
+    #define MEMCPY(TARGET, TARGETSIZE, SOURCE, SOURCESIZE) \
+        memcpy_s((TARGET), (TARGETSIZE), (SOURCE), (SOURCESIZE))
+    #define MEMMOVE(TARGET, TARGETSIZE, SOURCE, SOURCESIZE) \
+        memmove_s((TARGET), (TARGETSIZE), (SOURCE), (SOURCESIZE))
+#else
+    #define FOPEN(STREAM, NAME, MODE) \
+        (STREAM) = fopen((NAME), (MODE))
+    #define MEMCPY(TARGET, TARGETSIZE, SOURCE, SOURCESIZE) \
+        memcpy((TARGET), (SOURCE), (TARGETSIZE))
+    #define MEMMOVE(TARGET, TARGETSIZE, SOURCE, SOURCESIZE) \
+        memmove((TARGET), (SOURCE), (SOURCESIZE))
+#endif
+
 )";
 }
 
@@ -683,34 +705,35 @@ void io_open(word_t unit, const char *name) {
             fclose(io.units[unit]);
             io.units[unit] = NULL;
         }
-#if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
-        fopen_s(&io.units[unit], name, "r");
-#else
-        io.units[unit] = fopen(name, "r");
-#endif
+        FOPEN(io.units[unit], name, "r");
     }
     if (io.units[unit] == NULL) {
         fprintf(stderr,
-            "\nThe program failed to open a file named \"%s\".\n"
-            "You can restart the program with a file name mapping using the\n"
-            "command line option -f, like this:\n\n"
-            "    -f%s=<path>\n", name, name);
+            "\nThe program failed to open a file named \"%s\".\r"
+            "\nYou can restart the program with a file name mapping using the\r"
+            "\ncommand line option -f, like this:\r"
+            "\n\n    -f%s=<path>\r", name, name);
         host_exit(EXIT_FAILURE);
     }
 }
 
 void io_loadrecord(word_t unit) {
-    const size_t bufsize = sizeof(io.record) - 1;  // reserve 1 for terminator
+    const size_t bufsize = sizeof(io.record) - 1;
     size_t i = 0;
     FILE *source = io.units[unit];
     assert(source != NULL);
     if (source != NULL) {
-        if (source == stdin) fflush(stdout);
-        while (i < bufsize) {
-            int ch = fgetc(source);
-            if (ch == EOF || ch == '\n') break;
-            if (io.upcase && unit == 0 && islower(ch)) ch = toupper(ch);
-            io.record[i++] = (char)ch;
+        if (source == stdin) {
+            fflush(stdout);
+            i = host_input(io.record, sizeof(io.record), io.upcase);
+        } else {
+            while (i < bufsize) {
+                int ch = fgetc(source);
+                if (ch == '\n' || ch == EOF) break;
+                if (ch == '\r') continue;
+                if (io.upcase && unit == 0 && islower(ch)) ch = toupper(ch);
+                io.record[i++] = (char)ch;
+            }
         }
         assert(0 <= i && i < bufsize);
     }
@@ -859,20 +882,23 @@ void io_input(addr_t var) {
 }
 
 void io_storerecord(word_t unit) {
-    FILE *out = unit == 0 ? stdout : io.units[unit];
+    const char CR = '\x0D', LF = '\x0A', FF = '\x0C';
+    if (io.suppress_cr) io.suppress_cr = false; else *io.pdst++ = CR;
     *io.pdst = '\0';
-    const char CR = '\x0D', LF = '\x0A';
+    FILE *out = unit == 0 ? stdout : io.units[unit];
     switch (io.record[0]) {
         case '-':  fputc(LF, out); /*FALLTHROUGH*/
         case '0':  fputc(LF, out); /*FALLTHROUGH*/
         case ' ':  fputc(LF, out); /*FALLTHROUGH*/
         case '+':  fputs(io.record+1, out);
                    break;
+        case '1':  fputc(FF, out);
+                   fputs(io.record+1, out);
+                   break;
         default:   fputc(LF, out);
                    fputs(io.record, out);
                    break;
     }
-    if (io.suppress_cr) io.suppress_cr = false; else fputc(CR, out);
     memset(io.record, 0, sizeof(io.record));
     io.psrc = io.pdst = io.record;
 }
@@ -1078,9 +1104,61 @@ void kron_override_date(const char *p) {
 constexpr std::string_view c_generator::host_subsystem() {
     return R"(
 // Host subsystem (core dumps, pause, etc.)
-void host_init() {
+
 #ifdef _WIN32
+static DWORD original_output_mode = 0;
+static DWORD original_input_mode  = 0;
+#endif
+
+void host_uninit(void);
+
+void host_init(void) {
+#ifdef _WIN32
+    // Emulation of ASA carriage control requires specific sequences of carriage
+    // returns and line feeds.  It's a battle for control on Windows.
     _setmode(_fileno(stdout), _O_BINARY);  // do NOT translate LF -> CRLF
+    _setmode(_fileno(stdin),  _O_BINARY);  // do NOT translate CRLF -> LF
+
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        GetConsoleMode(hOut, &original_output_mode);
+        DWORD mode = original_output_mode;
+        mode |= ENABLE_PROCESSED_OUTPUT;
+        mode |= DISABLE_NEWLINE_AUTO_RETURN;
+        SetConsoleMode(hOut, mode);
+    }
+
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn != INVALID_HANDLE_VALUE) {
+        GetConsoleMode(hIn, &original_input_mode);
+        DWORD mode = original_input_mode;
+        mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+        mode &= ~ENABLE_ECHO_INPUT;
+        mode &= ~ENABLE_LINE_INPUT;
+        mode &= ~ENABLE_INSERT_MODE;
+        mode &= ~ENABLE_PROCESSED_INPUT;
+        SetConsoleMode(hIn, mode);
+    }
+
+    atexit(host_uninit);
+#endif
+}
+
+void host_uninit(void) {
+#ifdef _WIN32
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn != INVALID_HANDLE_VALUE) {
+        SetConsoleMode(hIn, original_input_mode);
+    }
+
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        SetConsoleMode(hOut, original_output_mode);
+    }
+
+    _setmode(_fileno(stdin ), _O_TEXT);
+    _setmode(_fileno(stdout), _O_TEXT);
+    fputc('\n', stdout);
 #endif
 }
 
@@ -1088,11 +1166,7 @@ char host_endianness() {
     #if CHAR_BIT == 8
         static const char buffer[sizeof(int)] = { 0x01, 0x02 };
         int test = -1;
-#if defined(__STDC_LIB_EXT1__) | defined(_MSC_VER)
-        memcpy_s(&test, sizeof(test), buffer, sizeof(buffer));
-#else
-        memcpy(&test, buffer, sizeof(buffer));
-#endif
+        MEMCPY(&test, sizeof(test), buffer, sizeof(buffer));
         switch (test) {
             case 0x0102: return 'B';
             case 0x0201: return 'L';
@@ -1100,6 +1174,184 @@ char host_endianness() {
         }
     #endif
     return '?';
+}
+
+enum {
+    KEY_UNKNOWN     = -1,
+    KEY_BS          = 0x08,
+    KEY_TAB         = 0x09,
+    KEY_LF          = 0x0A,
+    KEY_CR          = 0x0D,
+    KEY_HOME        = 0x81,
+    KEY_PAGEUP      = 0x82,
+    KEY_UP          = 0x83,
+    KEY_LEFT        = 0x84,
+    KEY_RIGHT       = 0x85,
+    KEY_DOWN        = 0x86, 
+    KEY_PAGEDOWN    = 0x87,
+    KEY_END         = 0x88,
+    KEY_INSERT      = 0x89,
+    KEY_DELETE      = 0x8A,
+    KEY_F1          = 0x91,
+    KEY_F2          = 0x92,
+    KEY_F3          = 0x93,
+    KEY_F4          = 0x94,
+    KEY_F5          = 0x95,
+    KEY_F6          = 0x96,
+    KEY_F7          = 0x97,
+    KEY_F8          = 0x98,
+    KEY_F9          = 0x99,
+    KEY_F10         = 0x9A,
+    KEY_F11         = 0x9B,
+    KEY_F12         = 0x9C
+};
+
+int host_keypress(bool upcase) {
+#ifdef _WIN32
+    // On Windows, use __getch to avoid delayed delivery of '\r'.
+    int c = _getch();
+    if (c == 0xE0) {
+        // When using _getch(), special keys are returned as 0xE0 followed by a
+        // second character.  Mapping determined empirically.
+        switch (_getch()) {
+            case ';': return KEY_F1;
+            case '<': return KEY_F2;
+            case '=': return KEY_F3;
+            case '>': return KEY_F4;
+            case '?': return KEY_F5;
+            case '@': return KEY_F6;
+            case 'A': return KEY_F7;
+            case 'B': return KEY_F8;
+            case 'C': return KEY_F9;
+            case 'D': return KEY_F10;
+            case 'G': return KEY_HOME;
+            case 'H': return KEY_UP;
+            case 'I': return KEY_PAGEUP;
+            case 'K': return KEY_LEFT;
+            case 'M': return KEY_RIGHT;
+            case 'O': return KEY_END;
+            case 'P': return KEY_DOWN;
+            case 'Q': return KEY_PAGEDOWN;
+            case 'R': return KEY_INSERT;
+            case 'S': return KEY_DELETE;
+            case '\x85': return KEY_F11;
+            case '\x86': return KEY_F12;
+            default:  return KEY_UNKNOWN;
+        }
+    }
+#else
+    int c = getchar();
+#endif
+    if (c < 0 || 128 <= c) return KEY_UNKNOWN;
+    if (upcase && 'a' <= c && c <= 'z') c += 'A' - 'a';
+    switch (c) {
+        case '\x1B': break;
+        case '\t':   return KEY_TAB;
+        case '\n':   return KEY_LF;
+        case '\r':   return KEY_CR;
+        case '\b':
+        case '\x7F': return KEY_BS;
+        default:     if (' ' <= c) return c;
+                     return KEY_UNKNOWN;
+    }
+#ifndef _WIN32
+    c = getchar();
+    if (c != '[') return KEY_UNKNOWN;
+    switch (c) {
+        case 'A': return KEY_UP;
+        case 'B': return KEY_DOWN;
+        case 'C': return KEY_RIGHT;
+        case 'D': return KEY_LEFT;
+        case 'F': return KEY_END;
+        case 'H': return KEY_HOME;
+    }
+    if (c < '0' || '9' < c) return KEY_UNKNOWN;
+    unsigned value = c - '0';
+    for (c = getchar(); '0' <= c && c <= '9'; c = getchar()) {
+        value *= 10;
+        value += c - '0';
+    }
+    unsigned modifier = 1;
+    if (c == ';') {
+        modifier = value;
+        c = getchar();
+        if (c < '0' || '9' < c) return KEY_UNKNOWN;
+        value = c - '0';
+        for (c = getchar(); '0' <= c && c <= '9'; c = getchar()) {
+            value *= 10;
+            value += c - '0';
+        }
+    }
+    if (c != '~') return KEY_UNKNOWN;
+    switch (value) {
+        case 1: return KEY_HOME;
+        case 2: return KEY_INSERT;
+        case 3: return KEY_DELETE;
+        case 4: return KEY_END;
+        case 5: return KEY_PAGEUP;
+        case 6: return KEY_PAGEDOWN;
+    }
+#endif
+    return KEY_UNKNOWN;
+}
+
+unsigned host_input(char *buffer, unsigned capacity, bool upcase) {
+    #define ECHO(X) fputc(X, stdout)
+    #define ECHOREST(I) fwrite(buffer + (I), 1, size - (I), stdout)
+    #define KEEP(X) buffer[i++] = (char)X
+    #define SCP() fwrite("\x1B[s", 1, 3, stdout)
+    #define RCP() fwrite("\x1B[u", 1, 3, stdout)
+
+    if (capacity == 0) return capacity;
+    --capacity;  // guarantee space for terminator
+    bool overstrike = false;
+    unsigned i = 0, size = 0;
+    for (;;) {
+        int key = host_keypress(upcase);
+        switch (key) {
+            case KEY_BS:
+                if (i == 0) break;
+                --i; ECHO('\b');
+                /*FALLTHROUGH*/
+            case KEY_DELETE:
+                if (i == size || size == 0) break;
+                --size;
+                MEMMOVE(buffer + i, capacity - i, buffer + i + 1, size - i);
+                SCP(); ECHOREST(i); ECHO(' '); RCP();
+                break;
+            case KEY_CR:
+                buffer[size] = '\0'; ECHO('\r');
+                return size;
+            case KEY_LEFT:
+                if (i > 0) { --i; ECHO('\b'); }
+                break;
+            case KEY_RIGHT:
+                if (i < size) ECHO(buffer[i++]);
+                break;
+            case KEY_HOME:
+                while (i > 0) { --i; ECHO('\b'); }
+                break;
+            case KEY_END:
+                while (i < size) ECHO(buffer[i++]);
+                break;
+            case KEY_INSERT:
+                overstrike = !overstrike;
+                break;
+            default:
+                if (key < ' ' || '\x7F' < key) break;
+                if (overstrike && i < size) { KEEP(key); ECHO(key); break; }
+                if (size == capacity) break;
+                MEMMOVE(buffer + i + 1, capacity - i - 1, buffer + i, size - i);
+                KEEP(key); ECHO(key); ++size;
+                if (i < size) { SCP(); ECHOREST(i); RCP(); }
+                break;
+        }
+    }
+
+    #undef RCP
+    #undef SCP
+    #undef ECHOREST
+    #undef ECHO
 }
 
 void host_tidyfname(char *fname, size_t bufsize, char const *defext) {
@@ -1163,9 +1415,10 @@ static const host_corehdr host_coremodel = {
 };
 
 bool host_dumpcore(const char *file_name) {
-    FILE *core_file = fopen(file_name, "wb");
+    FILE *core_file = NULL;
+    FOPEN(core_file, file_name, "wb");
     if (core_file == NULL) {
-        fprintf(stderr, "cannot open '%s' for writing\n", file_name);
+        fprintf(stderr, "\nCANNOT OPEN '%s' FOR WRITING\r", file_name);
         return false;
     }
     host_corehdr hdr = host_coremodel;
@@ -1175,7 +1428,7 @@ bool host_dumpcore(const char *file_name) {
         fwrite(&hdr, 1, sizeof(hdr), core_file) == sizeof(hdr) &&
         fwrite(core, sizeof(word_t), hdr.count, core_file) == hdr.count;
     fclose(core_file);
-    if (!success) fputs("failed to save core dump", stderr);
+    if (!success) fputs("\nFAILED TO SAVE CORE DUMP\r", stderr);
     return success;
 }
 
@@ -1189,9 +1442,10 @@ bool host_loadcore(const char *file_name) {
     strncpy(fname, file_name, sizeof(fname));
 #endif
     host_tidyfname(fname, sizeof(fname), ".DMP");
-    FILE *core_file = fopen(fname, "rb");
+    FILE *core_file = NULL;
+    FOPEN(core_file, fname, "rb");
     if (core_file == NULL) {
-        fprintf(stderr, "cannot open '%s' for reading\n", fname);
+        fprintf(stderr, "\nCANNOT OPEN '%s' FOR READING.\r", fname);
         return false;
     }
 
@@ -1220,18 +1474,16 @@ NORETURN void host_exit(int status) { exit(status); }
 
 void host_pause(const char *message) {
     do {
-        puts(message);
+        printf("\n%s", message);
         char buf[4] = {0};
-        const char *response = fgets(buf, sizeof(buf), stdin);
-        const unsigned char first =
-            (unsigned char)(response == NULL ? ' ' : response[0]);
-        const char ch = (char)(islower(first) ? toupper(first) : first);
-        switch (ch) {
-            case 'G': return;
-            case 'X': host_exit(EXIT_SUCCESS);
+        if (host_input(buf, sizeof(buf), true) > 0) {
+            switch (buf[0]) {
+                case 'G': return;
+                case 'X': host_exit(EXIT_SUCCESS);
+            }
         }
-        puts("PROGRAM IS PAUSED.  TYPE 'G' (RETURN) TO GO OR "
-             "'X' (RETURN) TO EXIT.");
+        printf("\nPROGRAM IS PAUSED.  TYPE 'G' (RETURN) TO GO OR "
+               "'X' (RETURN) TO EXIT.\r");
     } while (1);
 }
 )";
