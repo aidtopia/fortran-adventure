@@ -535,7 +535,7 @@ std::string c_generator::generate_variable_definition(symbol_info const &var) {
         comment += std::format(" return value");
     }
     if (!comment.empty()) comment = " //"s + comment;
-//    assert(var.address != 0 && "must assign address before code generation");
+    assert(var.address != 0 && "must assign address before code generation");
     return std::format(" const addr_t v{:<6} = {:5};{}\n",
                        var.name, var.address, comment);
 }
