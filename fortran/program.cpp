@@ -114,8 +114,9 @@ unsigned assign_addresses(program &prog) {
         if (auto commons = sub.extract_symbols(is_common, by_block_index);
             !commons.empty()
         ) {
-            auto range = comdat_address_range{0, 0};
-            auto block = symbol_name{};
+            assert(!comdats.empty());
+            auto block = comdats.begin()->first;
+            auto range = comdats.begin()->second;
             auto offset = 0u;
             for (auto &common : commons) {
                 if (block != common.comdat) {
