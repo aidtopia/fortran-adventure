@@ -731,7 +731,6 @@ void io_loadrecord(word_t unit) {
                 int ch = fgetc(source);
                 if (ch == '\n' || ch == EOF) break;
                 if (ch == '\r') continue;
-                if (io.upcase && unit == 0 && islower(ch)) ch = toupper(ch);
                 io.record[i++] = (char)ch;
             }
         }
@@ -1109,56 +1108,78 @@ constexpr std::string_view c_generator::host_subsystem() {
 static DWORD original_output_mode = 0;
 static DWORD original_input_mode  = 0;
 #endif
+static bool output_is_terminal = false;  // until redirection is ruled out
+static bool  input_is_keyboard = false;  // until redirection is ruled out
 
-void host_uninit(void);
-
-void host_init(void) {
+void host_restoreoutputmode(void) {
+    if (!output_is_terminal) return;
 #ifdef _WIN32
-    // Emulation of ASA carriage control requires specific sequences of carriage
-    // returns and line feeds.  It's a battle for control on Windows.
-    _setmode(_fileno(stdout), _O_BINARY);  // do NOT translate LF -> CRLF
-    _setmode(_fileno(stdin),  _O_BINARY);  // do NOT translate CRLF -> LF
-
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut != INVALID_HANDLE_VALUE) {
-        GetConsoleMode(hOut, &original_output_mode);
-        DWORD mode = original_output_mode;
-        mode |= ENABLE_PROCESSED_OUTPUT;
-        mode |= DISABLE_NEWLINE_AUTO_RETURN;
-        SetConsoleMode(hOut, mode);
-    }
-
-    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
-    if (hIn != INVALID_HANDLE_VALUE) {
-        GetConsoleMode(hIn, &original_input_mode);
-        DWORD mode = original_input_mode;
-        mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
-        mode &= ~ENABLE_ECHO_INPUT;
-        mode &= ~ENABLE_LINE_INPUT;
-        mode &= ~ENABLE_INSERT_MODE;
-        SetConsoleMode(hIn, mode);
-    }
-
-    atexit(host_uninit);
-#endif
-}
-
-void host_uninit(void) {
-#ifdef _WIN32
-    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
-    if (hIn != INVALID_HANDLE_VALUE) {
-        SetConsoleMode(hIn, original_input_mode);
-    }
-
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut != INVALID_HANDLE_VALUE) {
-        SetConsoleMode(hOut, original_output_mode);
-    }
-
-    _setmode(_fileno(stdin ), _O_TEXT);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+    SetConsoleMode(hOut, original_output_mode);
     _setmode(_fileno(stdout), _O_TEXT);
     fputc('\n', stdout);
 #endif
+}
+
+void host_setoutputmode(void) {
+#ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;  // doomed
+    if (GetConsoleMode(hOut, &original_output_mode) == 0) {
+        assert(GetLastError() == ERROR_INVALID_HANDLE);
+        return; // stdout is redirected to a file or pipe
+    }
+    DWORD mode = original_output_mode;
+    mode |= ENABLE_PROCESSED_OUTPUT;
+    mode |= DISABLE_NEWLINE_AUTO_RETURN;
+    SetConsoleMode(hOut, mode);
+    _setmode(_fileno(stdout), _O_BINARY);  // do NOT translate LF -> CRLF
+    output_is_terminal = true;
+    atexit(host_restoreoutputmode);
+#else
+    // TODO set output_is_terminal if stdout isn't redirected
+    output_is_terminal = true;
+#endif
+}
+
+void host_restoreinputmode(void) {
+    if (!input_is_keyboard) return;
+#ifdef _WIN32
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn == INVALID_HANDLE_VALUE) return;
+    SetConsoleMode(hIn, original_input_mode);
+    _setmode(_fileno(stdin ), _O_TEXT);
+#endif
+}
+
+void host_setinputmode(void) {
+#ifdef _WIN32
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn == INVALID_HANDLE_VALUE) return;  // not a good sign
+    if (GetConsoleMode(hIn, &original_input_mode) == 0) {
+        assert(GetLastError() == ERROR_INVALID_HANDLE);
+        return; // stdin is redirected from a file or pipe
+    }
+    DWORD mode = original_input_mode;
+    mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+    mode &= ~ENABLE_ECHO_INPUT;
+    mode &= ~ENABLE_LINE_INPUT;
+    mode &= ~ENABLE_INSERT_MODE;
+    mode &= ~ENABLE_PROCESSED_INPUT;
+    SetConsoleMode(hIn, mode);
+    _setmode(_fileno(stdin), _O_BINARY);  // do NOT translate CRLF -> LF
+    input_is_keyboard = true;
+    atexit(host_restoreinputmode);
+#else
+    // TODO: Set input_is_keyboard if stdin is not redirected.
+    input_is_keyboard = true;
+#endif
+}
+
+void host_init(void) {
+    host_setoutputmode();
+    host_setinputmode();
 }
 
 char host_endianness() {
@@ -1208,6 +1229,7 @@ enum {
 };
 
 int host_keypress(bool upcase) {
+    assert(input_is_keyboard);
 #ifdef _WIN32
     // On Windows, use _getch to avoid delayed delivery of '\r'.
     int c = _getch();
@@ -1306,7 +1328,7 @@ int host_keypress(bool upcase) {
     return KEY_UNKNOWN;
 }
 
-unsigned host_input(char *buffer, unsigned capacity, bool upcase) {
+unsigned host_lineeditor(char *buffer, unsigned capacity, bool upcase) {
     #define ECHO(X) fputc(X, stdout)
     #define ECHOREST(I) fwrite(buffer + (I), 1, size - (I), stdout)
     #define KEEP(X) buffer[i++] = (char)X
@@ -1363,6 +1385,31 @@ unsigned host_input(char *buffer, unsigned capacity, bool upcase) {
     #undef SCP
     #undef ECHOREST
     #undef ECHO
+}
+
+unsigned host_readline(char *buffer, unsigned capacity, bool upcase) {
+    fgets(buffer, capacity, stdin);
+    unsigned i;
+    for (i = 0; i < capacity; ++i) {
+        assert(buffer[i] != '\r');
+        if (buffer[i] == '\n') buffer[i] = '\0';
+        if (buffer[i] == '\0') break;;
+        if (upcase && ('a' <= buffer[i] && buffer[i] <= 'z')) {
+            buffer[i] += 'A' - 'a';
+        }
+    }
+    if (i == capacity) {
+        i = capacity - 1;
+        buffer[i] = '\0';
+    }
+    fputs(buffer, stdout);
+    fputc('\r', stdout);
+    return i;
+}
+
+unsigned host_input(char *buffer, unsigned capacity, bool upcase) {
+    if (input_is_keyboard) return host_lineeditor(buffer, capacity, upcase);
+    return host_readline(buffer, capacity, upcase);
 }
 
 void host_tidyfname(char *fname, size_t bufsize, char const *defext) {
