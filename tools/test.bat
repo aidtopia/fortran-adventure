@@ -17,10 +17,10 @@ ECHO:
 ECHO Compiling the C code...
 CD /D target
 REM OPTOPT is "optimizer options"
-SET OPTOPT=/Od /WX
-REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy
+SET OPTOPT=/Od /MDd
+REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy /MD
 FOR %%f IN (ADV*.c) DO ^
-cl /nologo /std:c11 /W4 %OPTOPT% /Zi /Fd%%~nf.pdb %%f /link /INCREMENTAL:NO
+cl /nologo /std:c11 /W4 /WX %OPTOPT% /Zi /Fd%%~nf.pdb %%f /link /INCREMENTAL:NO
 SET TESTRESULT=%ERRORLEVEL%
 CD ..
 IF %TESTRESULT% NEQ 0 GOTO DONE
