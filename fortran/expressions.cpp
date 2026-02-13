@@ -125,50 +125,27 @@ void external_node::do_mark_referenced(unit &u, unsigned &) {
 }
 
 
-std::string array_index_node::do_generate_address() const {
-    return std::format("(v{} + (addr_t){})",
-                       m_array, m_index_expr->generate_value());
+std::string array_subscript_node::do_generate_address() const {
+    return std::format("a{}({})", m_array, formatted_subscripts(m_subscripts));
 }
 
-void array_index_node::do_mark_referenced(unit &u, unsigned &t) {
+void array_subscript_node::do_mark_referenced(unit &u, unsigned &t) {
     u.mark_symbol_referenced(m_array);
-    m_index_expr->mark_referenced(u, t);
-}
-
-// Returns an expression to compute the 1-dimensional index into a flat array
-// from subscripts into a hypothetical N-dimensional array.
-expression_t array_index_node::make_index_expression(
-    subscript_list_t const &subscripts,
-    array_shape const &shape
-) {
-    assert(!shape.empty() && shape.size() == subscripts.size());
-    auto result = zero_based(subscripts[0], shape[0]);
-    auto scale = shape[0].size();
-    for (std::size_t i = 1; i < shape.size(); ++i) {
-        auto const component =
-            scale_up(zero_based(subscripts[i], shape[i]), scale);
-        result =
-            std::make_shared<binary_node>(result, operator_t::add, component);
-        scale *= shape[i].size();
+    for (auto const &subscript : m_subscripts) {
+        subscript->mark_referenced(u, t);
     }
-    return result;
 }
 
-expression_t array_index_node::zero_based(
-    expression_t index,
-    dimension const &dimen
+std::string array_subscript_node::formatted_subscripts(
+    subscript_list_t const &subscripts
 ) {
-    auto const dim_min = std::make_shared<constant_node>(dimen.minimum);
-    return std::make_shared<binary_node>(index, operator_t::subtract, dim_min);
-}
-
-expression_t array_index_node::scale_up(
-    expression_t index,
-    machine_word_t scale
-) {
-    if (scale == 1) return index;
-    auto const s = std::make_shared<constant_node>(scale);
-    return std::make_shared<binary_node>(index, operator_t::multiply, s);
+    assert(!subscripts.empty());
+    auto formatted = std::string{};
+    for (auto const &subscript : subscripts) {
+        if (!formatted.empty()) formatted += ", ";
+        formatted += subscript->generate_value();
+    }
+    return formatted;
 }
 
 

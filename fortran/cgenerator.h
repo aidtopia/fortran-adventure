@@ -32,11 +32,14 @@ class c_generator {
         std::string generate_dummies(unit const &u);
         std::string generate_common_variable_declarations(unit const &u);
         std::string generate_local_variable_declarations(unit const &u);
+        std::string generate_subscript_macros(unit const &u);
         std::string generate_format_specifications(unit const &u);
         std::string generate_external_declarations(unit const &u);
         std::string generate_subprogram_typedefs(unit const &u);
+        std::string generate_macro_cleanup(unit const &u);
 
         std::string generate_variable_definition(symbol_info const &var);
+        std::string generate_subscript_macro(symbol_info const &var);
 
         // The runtime support consists of static text.
         static constexpr std::string_view external_dependencies();

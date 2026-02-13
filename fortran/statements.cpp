@@ -224,14 +224,14 @@ std::string read_statement::do_generate(unit const &u) const {
             } else {
                 auto const symbol = u.find_symbol(item.variable);
                 auto const array_expr =
-                    array_index_node{item.variable, symbol.shape, item.indices};
+                    array_subscript_node{item.variable, item.indices};
                 variable_ref = array_expr.generate_address();
             }
             input_item = std::format("  io_input({});\n", variable_ref);
         } else {
             auto const symbol = u.find_symbol(item.variable);
             auto const array_expr =
-                array_index_node{item.variable, symbol.shape, item.indices};
+                array_subscript_node{item.variable, item.indices};
             input_item = std::format(
                 "  for (core[v{0}] = {1}; "
                        "in_range(core[v{0}], {1}, {2}); "
@@ -287,14 +287,14 @@ std::string type_statement::do_generate(unit const &u) const {
             } else {
                 auto const symbol = u.find_symbol(item.variable);
                 auto const array_expr =
-                    array_index_node{item.variable, symbol.shape, item.indices};
+                    array_subscript_node{item.variable, item.indices};
                 variable_ref = array_expr.generate_address();
             }
             output_item = std::format("  io_output(0, {});\n", variable_ref);
         } else {
             auto const symbol = u.find_symbol(item.variable);
             auto const array_expr =
-                array_index_node{item.variable, symbol.shape, item.indices};
+                array_subscript_node{item.variable, item.indices};
             output_item = std::format(
                 "  for (core[v{0}] = {1}; "
                        "in_range(core[v{0}], {1}, {2}); "

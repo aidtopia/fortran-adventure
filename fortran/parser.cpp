@@ -667,8 +667,8 @@ parser::expected<statement_t> parser::parse_assignment() {
             return error("wrong number of subscripts for {}", name);
         }
         lvalue =
-            std::make_shared<array_index_node>(name, symbol.shape,
-                                               std::move(subscripts).value());
+            std::make_shared<array_subscript_node>(
+                name, std::move(subscripts).value());
     } else {
         lvalue = std::make_shared<variable_node>(name);
     }
@@ -1110,8 +1110,8 @@ parser::expected<expression_t> parser::parse_atom() {
                              subscripts.value().size());
             }
             return
-                std::make_shared<array_index_node>(
-                    name, symbol.shape, std::move(subscripts).value());
+                std::make_shared<array_subscript_node>(
+                    name, std::move(subscripts).value());
         }
 
         // function arguments

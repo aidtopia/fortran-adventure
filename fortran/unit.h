@@ -130,9 +130,6 @@ class unit {
 inline bool all(symbol_info const &) {
     return true;
 }
-inline bool is_array(symbol_info const &a) {
-    return !a.shape.empty();
-}
 inline bool is_argument(symbol_info const &a) {
     return a.kind == symbolkind::argument;
 }
@@ -144,6 +141,9 @@ inline bool is_common(symbol_info const &a) {
 }
 inline bool is_return_value(symbol_info const &a) {
     return a.kind == symbolkind::retval;
+}
+inline bool is_referenced_array(symbol_info const &a) {
+    return !a.shape.empty() && a.referenced;
 }
 inline bool is_referenced_external(symbol_info const &a) {
     return a.kind == symbolkind::external && a.referenced;

@@ -376,15 +376,17 @@ std::string c_generator::generate_unit(unit const &u) {
     auto const externals = generate_external_declarations(u);
     auto const typedefs  = generate_subprogram_typedefs(u);
     auto const formats   = generate_format_specifications(u);
+    auto const macros    = generate_subscript_macros(u);
     auto const code      = generate_statements(u);
+    auto const cleanup   = generate_macro_cleanup(u);
     return
         std::format("{}\n"
                     "{} {{\n"
-                    "{}{}{}{}{}{}{}{}"
+                    "{}{}{}{}{}{}{}{}{}{}"
                     "}}\n",
             arithmetic_functions,
             signature, retval, dummies, commons, locals, externals, typedefs,
-            formats, code);
+            formats, macros, code, cleanup);
 }
 
 std::string c_generator::generate_function_signature(unit const &u) {
@@ -456,6 +458,16 @@ std::string c_generator::generate_local_variable_declarations(unit const &u) {
     return result;
 }
 
+std::string c_generator::generate_subscript_macros(unit const &u) {
+    auto const arrays = u.extract_symbols(is_referenced_array);
+    if (arrays.empty()) return {};
+    auto macros = std::format(" // Subscripting macro{}\n", plural(arrays));
+    for (auto const &array: arrays) {
+        macros += generate_subscript_macro(array);
+    }
+    return macros;
+}
+
 std::string c_generator::generate_format_specifications(unit const &u) {
     auto const labels = u.extract_symbols(is_referenced_format);
     if (labels.empty()) return {};
@@ -506,9 +518,18 @@ std::string c_generator::generate_subprogram_typedefs(unit const &u) {
     return result;
 }
 
+std::string c_generator::generate_macro_cleanup(unit const &u) {
+    auto const arrays = u.extract_symbols(is_referenced_array);
+    auto undefs = std::string{};
+    for (auto const &array : arrays) {
+        undefs += std::format(" #undef a{}\n", array.name);
+    }
+    return undefs;
+}
+
 std::string c_generator::generate_variable_definition(symbol_info const &var) {
     auto comment = std::string{};
-    if (is_array(var)) {
+    if (!var.shape.empty()) {
         comment += std::format(" [{}]", core_size(var));
         if (!var.init_data.empty()) {
             auto const &data = var.init_data;
@@ -538,6 +559,26 @@ std::string c_generator::generate_variable_definition(symbol_info const &var) {
     assert(var.address != 0 && "must assign address before code generation");
     return std::format(" const addr_t v{:<6} = {:5};{}\n",
                        var.name, var.address, comment);
+}
+
+std::string c_generator::generate_subscript_macro(symbol_info const &var) {
+    if (var.shape.empty()) return {};
+    auto indices = std::string{"S0"};
+    for (auto i = 1uz; i < var.shape.size(); ++i) {
+        indices += std::format(", S{}", i);
+    }
+
+    auto offset = std::string{};
+    for (auto i = var.shape.size(); i-- > 0; ) {
+        auto const &dim = var.shape[i];
+        offset = offset.empty()
+            ? std::format("S{} - {}", i, dim.minimum)
+            : std::format("({})*{} + (S{} - {})",
+                          offset, dim.size(), i, dim.minimum);
+    }
+    return
+        std::format(" #define a{0}({1})  (v{0} + (addr_t)({2}))\n",
+                    var.name, indices, offset);
 }
 
 constexpr std::string_view c_generator::external_dependencies() {

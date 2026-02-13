@@ -88,39 +88,23 @@ class external_node : public address_expression_node {
         symbol_name m_name;
 };
 
-class array_index_node : public address_expression_node {
+class array_subscript_node : public address_expression_node {
     public:
-        array_index_node(
+        array_subscript_node(
             symbol_name const &name,
-            array_shape const &shape,
-            subscript_list_t const &subscripts
+            subscript_list_t subscripts
         ) :
             m_array(name),
-            m_index_expr(make_index_expression(subscripts, shape)) {}
-
-        array_index_node(
-            symbol_name const &name,
-            expression_t index_expr
-        ) : m_array(name), m_index_expr(index_expr) {}
+            m_subscripts(std::move(subscripts)) {}
 
     private:
         std::string do_generate_address() const override;
         void do_mark_referenced(unit &, unsigned &) override;
-        
-        static expression_t make_index_expression(
-            subscript_list_t const &subscripts,
-            array_shape const &shape
-        );
 
-        static expression_t zero_based(
-            expression_t index,
-            dimension const &dimen
-        );
-
-        static expression_t scale_up(expression_t index, machine_word_t scale);
+        static std::string formatted_subscripts(subscript_list_t const &);
 
         symbol_name m_array;
-        expression_t m_index_expr;
+        subscript_list_t m_subscripts;
 };
 
 class function_invocation_node : public value_expression_node {
