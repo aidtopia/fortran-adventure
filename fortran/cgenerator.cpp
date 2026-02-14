@@ -191,7 +191,7 @@ std::string c_generator::generate_prototypes(program const &prog) {
 
 std::string c_generator::generate_main_function(program const &prog) {
     return std::format(R"(
-bool offer_to_dump_core(void) {{
+void offer_to_dump_core(void) {{
     io_selectformat("'0ENTER FILE NAME TO SAVE CORE IMAGE: ',$");
     io_output(0, 0);
     char fname[260+1];
@@ -200,16 +200,15 @@ bool offer_to_dump_core(void) {{
     if (*fname == '\0') {{
         io_selectformat("' EXITING WITHOUT SAVING CORE IMAGE.'");
         io_output(0, 0);
-        return false;
+        return;
     }}
     if (host_dumpcore(fname)) {{
         io_selectformat("'0OK'");
         io_output(0, 0);
-        return true;
+        return;
     }}
     io_selectformat("'0FAILED TO SAVE CORE IMAGE.'");
     io_output(0, 0);
-    return false;
 }}
 
 int main(int argc, const char *argv[]) {{
@@ -1345,9 +1344,8 @@ int host_keypress(bool upcase) {
         value *= 10;
         value += c - '0';
     }
-    unsigned modifier = 1;
     if (c == ';') {
-        modifier = value;
+        // modifier = value;  // ignoring modifier for now
         c = getchar();
         if (c < '0' || '9' < c) return KEY_UNKNOWN;
         value = c - '0';
