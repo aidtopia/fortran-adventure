@@ -582,11 +582,15 @@ std::string c_generator::generate_subscript_macro(symbol_info const &var) {
 
 constexpr std::string_view c_generator::external_dependencies() {
     return R"(#define __STDC_WANT_LIB_EXT1__ 1
-#if _WIN32
+#ifdef _WIN32
 #include <Windows.h>
 #include <conio.h>
 #include <fcntl.h>
 #include <io.h>
+#endif
+#ifdef _POSIX_VERSION
+#include <termios.h>
+#include <unistd.h>
 #endif
 
 #include <assert.h>
@@ -1148,6 +1152,9 @@ constexpr std::string_view c_generator::host_subsystem() {
 static DWORD original_output_mode = 0;
 static DWORD original_input_mode  = 0;
 #endif
+#ifdef _POSIX_VERSION
+static struct termios original_terminal_mode;
+#endif
 static bool output_is_terminal = false;  // until redirection is ruled out
 static bool  input_is_keyboard = false;  // until redirection is ruled out
 
@@ -1177,9 +1184,9 @@ void host_setoutputmode(void) {
     _setmode(_fileno(stdout), _O_BINARY);  // do NOT translate LF -> CRLF
     output_is_terminal = true;
     atexit(host_restoreoutputmode);
-#else
-    // TODO set output_is_terminal if stdout isn't redirected
-    output_is_terminal = true;
+#endif
+#ifdef _POSIX_VERSION
+    // terminal changes are handled in host_setinputmode()
 #endif
 }
 
@@ -1190,6 +1197,9 @@ void host_restoreinputmode(void) {
     if (hIn == INVALID_HANDLE_VALUE) return;
     SetConsoleMode(hIn, original_input_mode);
     _setmode(_fileno(stdin ), _O_TEXT);
+#endif
+#ifdef _POSIX_VERSION
+    tcsetattr(STDIN_FILENO, TCSANOW, &original_terminal_mode);
 #endif
 }
 
@@ -1209,12 +1219,20 @@ void host_setinputmode(void) {
     mode &= ~ENABLE_PROCESSED_INPUT;
     SetConsoleMode(hIn, mode);
     _setmode(_fileno(stdin), _O_BINARY);  // do NOT translate CRLF -> LF
+#endif
+#ifdef _POSIX_VERSION
+    if (!isatty(STDIN_FILENO)) return;  // stdin is redirected
+    tcgetattr(STDIN_FILENO, &original_terminal_mode);
+    struct termios mode = original_terminal_mode;
+    mode.c_lflag &= ~(ICANON | ECHO | ISIG);
+    mode.c_iflag &= ~(ICRNL | INLCR | IGNCR);
+    mode.c_oflag &= ~OPOST;
+    mode.c_cc[VMIN] = 1;
+    mode.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &mode);
+#endif
     input_is_keyboard = true;
     atexit(host_restoreinputmode);
-#else
-    // TODO: Set input_is_keyboard if stdin is not redirected.
-    input_is_keyboard = true;
-#endif
 }
 
 void host_init(void) {
@@ -1327,7 +1345,7 @@ int host_keypress(bool upcase) {
         default:     if (' ' <= c) return c;
                      return KEY_UNKNOWN;
     }
-#ifndef _WIN32
+#ifndef _WIN32 // everything _except_ Windows
     c = getchar();
     if (c != '[') return KEY_UNKNOWN;
     switch (c) {
@@ -1422,6 +1440,7 @@ unsigned host_lineeditor(char *buffer, unsigned capacity, bool upcase) {
 
     #undef RCP
     #undef SCP
+    #undef KEEP
     #undef ECHOREST
     #undef ECHO
 }
