@@ -17,8 +17,8 @@ ECHO:
 ECHO Compiling the C code...
 CD /D target
 REM OPTOPT is "optimizer options"
-SET OPTOPT=/Od /MDd
-REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy /MD
+SET OPTOPT=/Od
+REM SET OPTOPT=/O2 /DNDEBUG /GF /GL /Gy
 FOR %%f IN (ADV*.c) DO ^
 cl /nologo /std:c11 /W4 /WX /MT %OPTOPT% /Zi /Fd%%~nf.pdb %%f /link /INCREMENTAL:NO
 SET TESTRESULT=%ERRORLEVEL%
