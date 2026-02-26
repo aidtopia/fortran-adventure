@@ -680,6 +680,9 @@ word_t pack_A5(char c0, char c1, char c2, char c3, char c4) {
         (((((((((word_t)(c0) << 7) + c1) << 7) + c2) << 7) + c3) << 7) + c4)
         << 1;
 }
+
+// Carriage control
+static const char CR = '\x0D', LF = '\x0A', FF = '\x0C';
 )";
 }
 
@@ -768,7 +771,6 @@ void io_loadrecord(word_t unit) {
     assert(source != NULL);
     if (source != NULL) {
         if (source == stdin) {
-            fflush(stdout);
             i = host_input(io.record, sizeof(io.record), io.upcase);
         } else {
             while (i < bufsize) {
@@ -925,7 +927,6 @@ void io_input(addr_t var) {
 }
 
 void io_storerecord(word_t unit) {
-    const char CR = '\x0D', LF = '\x0A', FF = '\x0C';
     if (io.suppress_cr) io.suppress_cr = false; else *io.pdst++ = CR;
     *io.pdst = '\0';
     FILE *out = unit == 0 ? stdout : io.units[unit];
@@ -1466,7 +1467,12 @@ unsigned host_readline(char *buffer, unsigned capacity, bool upcase) {
 }
 
 unsigned host_input(char *buffer, unsigned capacity, bool upcase) {
-    if (input_is_keyboard) return host_lineeditor(buffer, capacity, upcase);
+    if (input_is_keyboard) {
+        fputc(LF, stdout);
+        fputc(CR, stdout);
+        fflush(stdout);
+        return host_lineeditor(buffer, capacity, upcase);
+    }
     return host_readline(buffer, capacity, upcase);
 }
 
